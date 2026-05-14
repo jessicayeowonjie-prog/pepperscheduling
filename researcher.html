@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Pepper Study · 연구자 받은편지함</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #fbf7f4; }
+  body { font-family: 'Inter', 'Noto Sans KR', system-ui, sans-serif; color: #2b2422; }
+  #root {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  *::-webkit-scrollbar { width: 6px; }
+  *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+// ── Palettes ─────────────────────────────────────────────────────────────────
+const PALETTES = {
+  blush: { bg:'#fbf7f4', surface:'#fffdfb', ink:'#2b2422', muted:'#7e7068', line:'#ede2db', a:'#f2d4cf', b:'#cdd6e8', c:'#e9dccb', accent:'#a4625a' },
+};
+
+// ── Date helpers ─────────────────────────────────────────────────────────────
+const KO_DAYS = ['일','월','화','수','목','금','토'];
+const addDays  = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+const ymd      = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const fmtKoDate = (d) => `${d.getMonth()+1}월 ${d.getDate()}일 (${KO_DAYS[d.getDay()]})`;
+const fmtTime   = (h, m) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+function addMin(t, n) {
+  const [h, m] = t.split(':').map(Number);
+  const total  = h*60 + m + n;
+  return fmtTime(Math.floor(total/60), total%60);
+}
+
+// Rebuild availability so dayByKey works for session keys in mock data
+const TODAY = new Date(2026, 6, 12);
+const DAY_HOURS = {
+  '2026-07-12':[13,21],'2026-07-13':[9,21],'2026-07-14':[9,21],
+  '2026-07-15':[9,21],'2026-07-16':[9,21],'2026-07-17':[9,21],
+  '2026-07-18':[9,21],'2026-07-19':[13,21],'2026-07-20':[9,21],
+  '2026-07-21':[9,21],'2026-07-22':[9,21],'2026-07-23':[9,21],
+  '2026-07-24':[9,21],'2026-07-25':[9,21],
+};
+function buildAvailability() {
+  const days = [];
+  for (let i=0; i<14; i++) {
+    const d   = addDays(TODAY, i);
+    const key = ymd(d);
+    days.push({ date:d, key, slots:[] });
+  }
+  return days;
+}
+const AVAILABILITY = buildAvailability();
+const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
+
+// ── Mock data ─────────────────────────────────────────────────────────────────
+const MOCK_REQUESTS = [
+  {
+    id:'req-12', name:'김민지', dob:'2002-08-14', phone:'010-2845-3119', pid:'P-024',
+    submittedAt:'2026-07-08 14:22', status:'pending',
+    sessions:[
+      { key:'2026-07-13', time:'10:55' },
+      { key:'2026-07-16', time:'14:00' },
+      { key:'2026-07-20', time:'15:55' },
+    ],
+  },
+  {
+    id:'req-11', name:'박지훈', dob:'1999-02-03', phone:'010-7712-0044', pid:'P-023',
+    submittedAt:'2026-07-08 11:08', status:'pending',
+    sessions:[
+      { key:'2026-07-14', time:'09:55' },
+      { key:'2026-07-18', time:'13:05' },
+      { key:'2026-07-22', time:'11:50' },
+    ],
+  },
+  {
+    id:'req-10', name:'이수아', dob:'2001-11-29', phone:'010-3361-9802', pid:'P-022',
+    submittedAt:'2026-07-07 18:40', status:'confirmed',
+    sessions:[
+      { key:'2026-07-12', time:'13:55' },
+      { key:'2026-07-15', time:'11:50' },
+      { key:'2026-07-17', time:'16:50' },
+    ],
+  },
+];
+
+// ── Components ────────────────────────────────────────────────────────────────
+function StatusPill({ C, status }) {
+  const map = { pending:{ bg:C.a, label:'검토 대기' }, confirmed:{ bg:C.b, label:'확정' } };
+  const m   = map[status] || map.pending;
+  return (
+    <span style={{ fontSize:10, padding:'3px 8px', borderRadius:999, background:m.bg, color:C.ink, letterSpacing:0.3 }}>
+      {m.label}
+    </span>
+  );
+}
+
+function Cell({ C, k, v, mono }) {
+  return (
+    <div style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:10, padding:'12px 14px' }}>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:4 }}>{k}</div>
+      <div style={{ fontSize:14, fontWeight:500, letterSpacing:-0.1, fontVariantNumeric: mono ? 'tabular-nums' : 'normal' }}>{v}</div>
+    </div>
+  );
+}
+
+function ResearcherInbox() {
+  const C = PALETTES.blush;
+  const [active, setActive]   = React.useState('req-12');
+  const [reqs,   setReqs]     = React.useState(MOCK_REQUESTS);
+  const current = reqs.find((r) => r.id === active);
+
+  const setStatus = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
+
+  return (
+    <div style={{
+      width:1200, height:820, background:C.bg, color:C.ink,
+      fontFamily:'"Inter","Helvetica Neue",system-ui,sans-serif',
+      display:'flex', flexDirection:'column',
+      borderRadius:12, overflow:'hidden',
+      boxShadow:'0 1px 0 rgba(0,0,0,0.04), 0 24px 60px -30px rgba(0,0,0,0.18)',
+    }}>
+      {/* Top bar */}
+      <header style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'14px 24px', borderBottom:`1px solid ${C.line}`,
+        background:C.surface, fontSize:12, color:C.muted,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:18, height:18, borderRadius:4, background:`linear-gradient(135deg, ${C.a}, ${C.b})`, border:`1px solid ${C.line}` }} />
+          <span style={{ color:C.ink, fontWeight:500 }}>Pepper Study</span>
+          <span style={{ color:C.muted }}>· 연구자 받은편지함</span>
+        </div>
+        <div style={{ display:'flex', gap:16, alignItems:'center' }}>
+          <span>대기 {reqs.filter((r) => r.status==='pending').length}</span>
+          <span>확정 {reqs.filter((r) => r.status==='confirmed').length}</span>
+          <a href="index.html" style={{ fontSize:11, color:C.muted, textDecoration:'none', marginLeft:8 }}>← 참여자 화면</a>
+        </div>
+      </header>
+
+      <div style={{ flex:1, display:'grid', gridTemplateColumns:'320px 1fr', minHeight:0 }}>
+        {/* List */}
+        <aside style={{ borderRight:`1px solid ${C.line}`, overflow:'auto', background:C.surface }}>
+          <div style={{ padding:'16px 18px 8px', fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase' }}>
+            새 신청
+          </div>
+          {reqs.map((r) => {
+            const isActive = r.id === active;
+            const earliest = r.sessions[0];
+            const firstDay = dayByKey(earliest.key);
+            return (
+              <button key={r.id} onClick={() => setActive(r.id)} style={{
+                width:'100%', textAlign:'left', padding:'14px 18px',
+                background: isActive ? C.bg : 'transparent',
+                border:'none',
+                borderLeft: isActive ? `2px solid ${C.ink}` : '2px solid transparent',
+                borderBottom:`1px solid ${C.line}`,
+                cursor:'pointer', fontFamily:'inherit', color:C.ink,
+                display:'flex', flexDirection:'column', gap:6,
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:13, fontWeight:500 }}>{r.name}</span>
+                  <StatusPill C={C} status={r.status} />
+                </div>
+                <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                  {r.pid} · 첫 세션 {firstDay ? fmtKoDate(firstDay.date) : earliest.key} {earliest.time}
+                </div>
+                <div style={{ fontSize:11, color:C.muted, fontVariantNumeric:'tabular-nums' }}>접수 {r.submittedAt}</div>
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* Detail */}
+        <main style={{ padding:'28px 36px 32px', overflow:'auto' }}>
+          <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:6 }}>
+            새 일정 신청 · {current.id}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:22 }}>
+            <h2 style={{ fontSize:24, fontWeight:500, margin:0, letterSpacing:-0.2 }}>
+              {current.name}님의 세션 신청
+            </h2>
+            <div style={{ display:'flex', gap:8 }}>
+              {current.status === 'pending' ? (
+                <>
+                  <button onClick={() => setStatus(current.id, 'confirmed')} style={{
+                    padding:'9px 16px', borderRadius:999, background:C.ink, color:C.surface,
+                    border:'none', fontFamily:'inherit', fontSize:12, fontWeight:500, cursor:'pointer',
+                  }}>확정 후 문자 발송</button>
+                  <button style={{
+                    padding:'9px 14px', borderRadius:999, background:'transparent',
+                    border:`1px solid ${C.line}`, color:C.ink, fontFamily:'inherit', fontSize:12, cursor:'pointer',
+                  }}>일정 변경 요청</button>
+                </>
+              ) : (
+                <span style={{ fontSize:12, color:C.muted }}>확정 문자 발송됨</span>
+              )}
+            </div>
+          </div>
+
+          <section style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:22 }}>
+            <Cell C={C} k="이름" v={current.name} />
+            <Cell C={C} k="생년월일" v={current.dob} />
+            <Cell C={C} k="휴대전화" v={current.phone} mono />
+            <Cell C={C} k="참여자 ID" v={current.pid} mono />
+          </section>
+
+          <section style={{
+            background:C.surface, border:`1px solid ${C.line}`, borderRadius:12,
+            padding:'18px 22px', marginBottom:18,
+          }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:12 }}>
+              <div style={{ fontSize:13, fontWeight:500 }}>요청한 세션 · 3회</div>
+              <div style={{ fontSize:11, color:C.muted }}>모두 가능 시간대 · 충돌 없음</div>
+            </div>
+            {current.sessions.map((s, i) => {
+              const d = dayByKey(s.key);
+              return (
+                <div key={i} style={{
+                  display:'grid', gridTemplateColumns:'32px 1fr 200px 80px', gap:16, alignItems:'center',
+                  padding:'12px 0', borderTop: i>0 ? `1px solid ${C.line}` : 'none',
+                }}>
+                  <span style={{
+                    width:22, height:22, borderRadius:11,
+                    background: i===0 ? C.a : i===1 ? C.b : C.c,
+                    display:'inline-flex', alignItems:'center', justifyContent:'center',
+                    fontSize:11, fontWeight:500,
+                  }}>{i+1}</span>
+                  <div style={{ fontSize:14, fontVariantNumeric:'tabular-nums' }}>
+                    {d ? fmtKoDate(d.date) : s.key}
+                  </div>
+                  <div style={{ fontSize:13, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                    {s.time} – {addMin(s.time, 40)}
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted, textAlign:'right' }}>실험실 B3</div>
+                </div>
+              );
+            })}
+          </section>
+
+          {/* SMS template */}
+          <section style={{
+            background:C.bg, border:`1px dashed ${C.line}`, borderRadius:12, padding:'16px 20px',
+          }}>
+            <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:8 }}>
+              발송할 문자 미리보기
+            </div>
+            <div style={{ fontSize:13, lineHeight:1.7, color:C.ink }}>
+              [Pepper Study] {current.name}님, 신청해 주신 3개 세션이 확정되었습니다.<br />
+              {current.sessions.map((s, i) => {
+                const d = dayByKey(s.key);
+                return <span key={i}>· {d ? fmtKoDate(d.date) : s.key} {s.time}<br /></span>;
+              })}
+              장소: 실험실 B3 · 변경 시 회신 부탁드립니다.
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ── Scaled viewport wrapper ───────────────────────────────────────────────────
+function App() {
+  const W = 1200, H = 820;
+  const [scale, setScale] = React.useState(1);
+
+  React.useLayoutEffect(() => {
+    const compute = () => {
+      const pad = 40;
+      const s = Math.min(1, (window.innerWidth - pad) / W, (window.innerHeight - pad) / H);
+      setScale(Math.max(0.3, s));
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
+  }, []);
+
+  return (
+    <div style={{ position:'relative', width:Math.round(W*scale), height:Math.round(H*scale), flexShrink:0 }}>
+      <div style={{
+        position:'absolute', top:0, left:0, width:W, height:H,
+        transformOrigin:'top left',
+        transform: scale < 1 ? `scale(${scale})` : undefined,
+      }}>
+        <ResearcherInbox />
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
