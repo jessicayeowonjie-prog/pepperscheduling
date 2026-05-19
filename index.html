@@ -779,18 +779,44 @@ function Confirm({ C, form, selected, onReset }) {
   );
 }
 
+// ── LocalStorage helpers ──────────────────────────────────────────────────────
+const SUBMISSIONS_KEY = 'pepper-submissions';
+
+function saveSubmission(submission) {
+  try {
+    const existing = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([submission, ...existing]));
+  } catch(e) {}
+}
+
 // ── BookingApp ────────────────────────────────────────────────────────────────
 function BookingApp() {
   const C = PALETTES.blush;
-  const [step, setStep]       = React.useState('intro');
+  const [step, setStep]         = React.useState('intro');
   const [selected, setSelected] = React.useState([]);
-  const [form, setForm]       = React.useState({ name:'', dob:'', phone:'', consent:false });
+  const [form, setForm]         = React.useState({ name:'', dob:'', phone:'', consent:false });
   const [readInfo, setReadInfo] = React.useState(false);
 
   const reset = () => {
     setStep('intro'); setSelected([]);
     setForm({ name:'', dob:'', phone:'', consent:false });
     setReadInfo(false);
+  };
+
+  const submit = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    saveSubmission({
+      id: `req-${now.getTime()}`,
+      name: form.name.trim(),
+      dob:  form.dob,
+      phone: form.phone.trim(),
+      pid: '',
+      submittedAt: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+      status: 'pending',
+      sessions: selected.map((s) => ({ key: s.key, time: s.time })),
+    });
+    setStep('confirm');
   };
 
   const stepIdx = { intro:0, info:1, sessions:2, details:3, confirm:4 }[step];
@@ -805,7 +831,7 @@ function BookingApp() {
         {step==='sessions' && <Sessions C={C} selected={selected} setSelected={setSelected}
                                 onBack={() => setStep('info')} onNext={() => setStep('details')} />}
         {step==='details'  && <Details C={C} form={form} setForm={setForm} selected={selected}
-                                onBack={() => setStep('sessions')} onNext={() => setStep('confirm')} />}
+                                onBack={() => setStep('sessions')} onNext={submit} />}
         {step==='confirm'  && <Confirm C={C} form={form} selected={selected} onReset={reset} />}
       </div>
     </div>

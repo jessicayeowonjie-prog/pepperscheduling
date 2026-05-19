@@ -390,11 +390,66 @@ function SessionsBlock({ C, current, patchCurrent }) {
   );
 }
 
+// ── LocalStorage helpers ──────────────────────────────────────────────────────
+const SUBMISSIONS_KEY = 'pepper-submissions';
+const INBOX_KEY       = 'pepper-inbox';
+
+function loadInbox() {
+  try {
+    // Real submissions from participant page
+    const real = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+    // Researcher-modified state (patches, status, deletes) from previous session
+    const saved = localStorage.getItem(INBOX_KEY);
+    if (saved) {
+      const inboxReqs = JSON.parse(saved);
+      const existingIds = new Set(inboxReqs.map((r) => r.id));
+      const newReal = real.filter((r) => !existingIds.has(r.id));
+      return [...newReal, ...inboxReqs];
+    }
+    // First load: prepend any real submissions to mock data
+    const mockIds = new Set(MOCK_REQUESTS.map((r) => r.id));
+    const newReal = real.filter((r) => !mockIds.has(r.id));
+    return [...newReal, ...MOCK_REQUESTS];
+  } catch(e) {
+    return MOCK_REQUESTS;
+  }
+}
+
+function persistInbox(reqs) {
+  try { localStorage.setItem(INBOX_KEY, JSON.stringify(reqs)); } catch(e) {}
+}
+
 // ── ResearcherInbox ───────────────────────────────────────────────────────────
 function ResearcherInbox() {
   const C = PALETTES.blush;
-  const [reqs,   setReqs]   = React.useState(MOCK_REQUESTS);
-  const [active, setActive] = React.useState(reqs[0]?.id);
+  const [reqs,   setReqsRaw] = React.useState(loadInbox);
+  const [active, setActive]  = React.useState(() => loadInbox()[0]?.id);
+
+  // Persist every change and keep active pointing at a valid entry
+  const setReqs = (next) => {
+    const arr = typeof next === 'function' ? next(reqs) : next;
+    setReqsRaw(arr);
+    persistInbox(arr);
+  };
+
+  // Poll every 3 s for new participant submissions
+  React.useEffect(() => {
+    const check = () => {
+      try {
+        const real = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+        setReqsRaw((prev) => {
+          const existingIds = new Set(prev.map((r) => r.id));
+          const newOnes = real.filter((r) => !existingIds.has(r.id));
+          if (newOnes.length === 0) return prev;
+          const merged = [...newOnes, ...prev];
+          persistInbox(merged);
+          return merged;
+        });
+      } catch(e) {}
+    };
+    const id = setInterval(check, 3000);
+    return () => clearInterval(id);
+  }, []);
 
   React.useEffect(() => {
     if (!reqs.find((r) => r.id === active)) setActive(reqs[0]?.id);
@@ -402,9 +457,9 @@ function ResearcherInbox() {
 
   const current = reqs.find((r) => r.id === active) || reqs[0];
 
-  const setStatus    = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
-  const patchCurrent = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
-  const deleteCurrent = ()          => setReqs(reqs.filter((r) => r.id !== active));
+  const setStatus     = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
+  const patchCurrent  = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
+  const deleteCurrent = ()           => setReqs(reqs.filter((r) => r.id !== active));
 
   const frame = {
     width:1200, height:820, background:C.bg, color:C.ink,
