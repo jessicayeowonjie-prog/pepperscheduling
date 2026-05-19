@@ -403,7 +403,7 @@ function InfoH({ C, children }) {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
-function Sessions({ C, selected, setSelected, onBack, onNext }) {
+function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
   const toggle = (key, time) => {
     const exists = selected.find((s) => s.key === key && s.time === time);
     if (exists) {
@@ -411,9 +411,9 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
       return;
     }
     if (selected.length >= 3) return;
-    const d = dayByKey(key).date;
+    const d = lookupDay(key).date;
     const tooClose = selected.some((s) => {
-      const sd = dayByKey(s.key).date;
+      const sd = lookupDay(s.key).date;
       return Math.abs((d - sd) / 86400000) < 1;
     });
     if (tooClose) return;
@@ -432,7 +432,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
         <SelectionPills C={C} selected={selected} onRemove={(s) => toggle(s.key, s.time)} />
       </div>
 
-      <MonthDrawer C={C} selected={selected} toggle={toggle} />
+      <MonthDrawer C={C} availability={availability} dayByKey={lookupDay} selected={selected} toggle={toggle} />
 
       <div style={{
         position:'sticky', bottom:-36, marginTop:24,
@@ -490,9 +490,9 @@ function SelectionPills({ C, selected, onRemove }) {
 }
 
 // ── Month + slot drawer ───────────────────────────────────────────────────────
-function MonthDrawer({ C, selected, toggle }) {
-  const [focus, setFocus] = React.useState(AVAILABILITY[0].key);
-  const day = dayByKey(focus);
+function MonthDrawer({ C, selected, toggle, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
+  const [focus, setFocus] = React.useState(availability[0].key);
+  const day = lookupDay(focus);
   const monthStart = startOfMonth(TODAY);
   const firstDow   = monthStart.getDay();
   const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
@@ -520,7 +520,7 @@ function MonthDrawer({ C, selected, toggle }) {
           {Array.from({ length: daysInMonth }).map((_,i) => {
             const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), i+1);
             const key  = ymd(date);
-            const av   = dayByKey(key);
+            const av   = lookupDay(key);
             const free = av && av.slots.some((s) => !s.taken);
             const isFocus = key === focus;
             const selCount = selected.filter((s) => s.key === key).length;

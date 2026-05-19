@@ -88,7 +88,7 @@ const AVAILABILITY = buildAvailability();
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 // ── Booking app ─────────────────────────────────────────────────────────────
-function BookingApp({ palette = 'warm', calendarStyle = 'month-drawer', showConsent = true, scale = 1 }) {
+function BookingApp({ palette = 'warm', calendarStyle = 'month-drawer', showConsent = true, scale = 1, onSubmit, bookedSlots }) {
   const C = PALETTES[palette] || PALETTES.warm;
   const [step, setStep] = React.useState('intro'); // intro | info | sessions | details | confirm
   // selected: array of { key, time }
@@ -96,7 +96,46 @@ function BookingApp({ palette = 'warm', calendarStyle = 'month-drawer', showCons
   const [form, setForm] = React.useState({ name: '', dob: '', phone: '', pid: '', consent: false });
   const [readInfo, setReadInfo] = React.useState(false);
 
+  // Layer the live "booked by other participants" set on top of the static
+  // schedule so slots claimed by pending or confirmed requests aren't re-bookable.
+  const availability = React.useMemo(() => {
+    if (!bookedSlots || bookedSlots.size === 0) return AVAILABILITY;
+    return AVAILABILITY.map((d) => ({
+      ...d,
+      slots: d.slots.map((s) => ({
+        ...s,
+        taken: s.taken || bookedSlots.has(`${d.key}_${s.time}`)
+      }))
+    }));
+  }, [bookedSlots]);
+  const lookupDay = React.useCallback((k) => availability.find((d) => d.key === k), [availability]);
+
+  // If a previously selected slot has just been taken by someone else, drop it.
+  React.useEffect(() => {
+    if (!bookedSlots || bookedSlots.size === 0) return;
+    setSelected((sel) => sel.filter((s) => !bookedSlots.has(`${s.key}_${s.time}`)));
+  }, [bookedSlots]);
+
   const reset = () => {setStep('intro');setSelected([]);setForm({ name: '', dob: '', phone: '', pid: '', consent: false });setReadInfo(false);};
+
+  // Hand the completed submission to the parent so the researcher inbox sees it.
+  const submit = () => {
+    if (onSubmit) {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      onSubmit({
+        id: `req-${now.getTime()}`,
+        name: form.name.trim(),
+        dob: form.dob,
+        phone: form.phone.trim(),
+        pid: '', // researcher assigns
+        submittedAt: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        status: 'pending',
+        sessions: selected.map((s) => ({ key: s.key, time: s.time })),
+      });
+    }
+    setStep('confirm');
+  };
 
   const stepIdx = { intro: 0, info: 1, sessions: 2, details: 3, confirm: 4 }[step];
 
@@ -118,6 +157,8 @@ function BookingApp({ palette = 'warm', calendarStyle = 'month-drawer', showCons
         <Sessions
           C={C}
           calendarStyle={calendarStyle}
+          availability={availability}
+          dayByKey={lookupDay}
           selected={selected}
           setSelected={setSelected}
           onBack={() => setStep('info')}
@@ -132,7 +173,7 @@ function BookingApp({ palette = 'warm', calendarStyle = 'month-drawer', showCons
           selected={selected}
           showConsent={showConsent}
           onBack={() => setStep('sessions')}
-          onNext={() => setStep('confirm')} />
+          onNext={submit} />
 
         }
         {step === 'confirm' &&
@@ -471,7 +512,7 @@ function FactCard({ C, swatch, k, v, sub }) {
 }
 
 // ── Sessions step ───────────────────────────────────────────────────────────
-function Sessions({ C, calendarStyle, selected, setSelected, onBack, onNext }) {
+function Sessions({ C, calendarStyle, selected, setSelected, onBack, onNext, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
   const remaining = 3 - selected.length;
 
   // Toggle: add or remove a slot. Enforce ≥1 day apart and max 3.
@@ -484,9 +525,9 @@ function Sessions({ C, calendarStyle, selected, setSelected, onBack, onNext }) {
     if (selected.length >= 3) return;
     // ≥1 day apart: no other selection on same date or adjacent date with overlap?
     // Spec says "Minimum 1 day apart" → different dates, at least 1 day between.
-    const d = dayByKey(key).date;
+    const d = lookupDay(key).date;
     const tooClose = selected.some((s) => {
-      const sd = dayByKey(s.key).date;
+      const sd = lookupDay(s.key).date;
       const diff = Math.abs((d - sd) / 86400000);
       return diff < 1; // same day disallowed by this rule already
     });
@@ -506,9 +547,9 @@ function Sessions({ C, calendarStyle, selected, setSelected, onBack, onNext }) {
         <SelectionPills C={C} selected={selected} onRemove={(s) => toggle(s.key, s.time)} remaining={remaining} />
       </div>
 
-      {calendarStyle === 'month-drawer' && <MonthDrawer C={C} selected={selected} toggle={toggle} />}
-      {calendarStyle === 'two-week-grid' && <TwoWeekGrid C={C} selected={selected} toggle={toggle} />}
-      {calendarStyle === 'agenda' && <Agenda C={C} selected={selected} toggle={toggle} />}
+      {calendarStyle === 'month-drawer' && <MonthDrawer C={C} availability={availability} dayByKey={lookupDay} selected={selected} toggle={toggle} />}
+      {calendarStyle === 'two-week-grid' && <TwoWeekGrid C={C} availability={availability} dayByKey={lookupDay} selected={selected} toggle={toggle} />}
+      {calendarStyle === 'agenda' && <Agenda C={C} availability={availability} selected={selected} toggle={toggle} />}
 
       {/* Sticky footer — back link, progress hint, and "next" CTA that fades in only when all 3 are picked */}
       <div style={{
@@ -569,9 +610,9 @@ function SelectionPills({ C, selected, onRemove, remaining }) {
 }
 
 // ── Calendar style A: Month + slot drawer ──────────────────────────────────
-function MonthDrawer({ C, selected, toggle }) {
-  const [focus, setFocus] = React.useState(AVAILABILITY[0].key);
-  const day = dayByKey(focus);
+function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay }) {
+  const [focus, setFocus] = React.useState(availability[0].key);
+  const day = lookupDay(focus);
 
   // Build month grid for May 2026 (the month containing TODAY).
   const monthStart = startOfMonth(TODAY);
@@ -601,7 +642,7 @@ function MonthDrawer({ C, selected, toggle }) {
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), i + 1);
             const key = ymd(date);
-            const av = dayByKey(key);
+            const av = lookupDay(key);
             const inWindow = !!av;
             const free = av && av.slots.some((s) => !s.taken);
             const isFocus = key === focus;
@@ -717,9 +758,9 @@ function Legend({ swatch, label, outline }) {
 }
 
 // ── Calendar style B: Two-week grid with side panel ────────────────────────
-function TwoWeekGrid({ C, selected, toggle }) {
-  const [focus, setFocus] = React.useState(AVAILABILITY[0].key);
-  const day = dayByKey(focus);
+function TwoWeekGrid({ C, selected, toggle, availability, dayByKey: lookupDay }) {
+  const [focus, setFocus] = React.useState(availability[0].key);
+  const day = lookupDay(focus);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
       <div style={{
@@ -728,7 +769,7 @@ function TwoWeekGrid({ C, selected, toggle }) {
       }}>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>2주 일정</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-          {AVAILABILITY.map((d) => {
+          {availability.map((d) => {
             const free = d.slots.filter((s) => !s.taken).length;
             const isFocus = d.key === focus;
             const sel = selected.filter((s) => s.key === d.key).length;
@@ -771,19 +812,19 @@ function TwoWeekGrid({ C, selected, toggle }) {
 }
 
 // ── Calendar style C: Vertical agenda ──────────────────────────────────────
-function Agenda({ C, selected, toggle }) {
+function Agenda({ C, selected, toggle, availability }) {
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12,
       padding: '8px 24px', maxHeight: 500, overflow: 'auto'
     }}>
-      {AVAILABILITY.map((d, i) => {
+      {availability.map((d, i) => {
         const free = d.slots.filter((s) => !s.taken);
         if (free.length === 0) return null;
         return (
           <div key={d.key} style={{
             display: 'grid', gridTemplateColumns: '160px 1fr', gap: 24,
-            padding: '20px 0', borderBottom: i < AVAILABILITY.length - 1 ? `1px solid ${C.line}` : 'none'
+            padding: '20px 0', borderBottom: i < availability.length - 1 ? `1px solid ${C.line}` : 'none'
           }}>
             <div>
               <div style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: 1 }}>{KO_DAYS[d.date.getDay()]}요일</div>
@@ -962,7 +1003,7 @@ function Confirm({ C, form, selected, onReset }) {
       </div>
 
       <div style={{ marginTop: 26, fontSize: 12, color: C.muted }}>
-        24시간 이내에 확정 문자를 보내드립니다 · 문의: pepper-study@lab.ac.kr
+        24시간 이내에 확정 문자를 보내드립니다 · 문의: jessi2001@korea.ac.kr
       </div>
       <button onClick={onReset} style={{
         marginTop: 28, padding: '8px 16px', background: 'transparent', border: `1px solid ${C.line}`,
