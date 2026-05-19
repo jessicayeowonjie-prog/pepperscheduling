@@ -76,7 +76,7 @@ const DAY_HOURS = {
   '2026-07-25': [ 9, 21],
 };
 
-function buildAvailability() {
+function buildAvailability(extraTaken = new Set()) {
   const taken = new Set([
     '2026-07-13_10:00','2026-07-13_14:50',
     '2026-07-14_11:50','2026-07-14_16:50',
@@ -87,6 +87,7 @@ function buildAvailability() {
     '2026-07-23_10:00','2026-07-23_18:25',
     '2026-07-24_13:05',
   ]);
+  extraTaken.forEach((t) => taken.add(t));
   const days = [];
   for (let i = 0; i < 14; i++) {
     const d    = addDays(TODAY, i);
@@ -108,7 +109,20 @@ function buildAvailability() {
   return days;
 }
 
-const AVAILABILITY = buildAvailability();
+function getSubmissionTakenSlots() {
+  try {
+    const subs = JSON.parse(localStorage.getItem('pepper-submissions') || '[]');
+    const taken = new Set();
+    subs.forEach((sub) => {
+      (sub.sessions || []).forEach((s) => taken.add(`${s.key}_${s.time}`));
+    });
+    return taken;
+  } catch(e) {
+    return new Set();
+  }
+}
+
+const AVAILABILITY = buildAvailability(getSubmissionTakenSlots());
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -404,7 +418,27 @@ function InfoH({ C, children }) {
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
+  const [avail, setAvail] = React.useState(availability);
+
+  // Refresh taken slots from submissions every 5 s; also deselect any slot that got taken
+  React.useEffect(() => {
+    const refresh = () => {
+      const built = buildAvailability(getSubmissionTakenSlots());
+      setAvail(built);
+      setSelected((prev) => prev.filter((s) => {
+        const day  = built.find((d) => d.key === s.key);
+        const slot = day && day.slots.find((sl) => sl.time === s.time);
+        return !slot || !slot.taken;
+      }));
+    };
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, []);
+
   const toggle = (key, time) => {
+    const day  = avail.find((d) => d.key === key);
+    const slot = day && day.slots.find((s) => s.time === time);
+    if (slot && slot.taken) return;
     const exists = selected.find((s) => s.key === key && s.time === time);
     if (exists) {
       setSelected(selected.filter((s) => !(s.key === key && s.time === time)));
@@ -432,7 +466,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVA
         <SelectionPills C={C} selected={selected} onRemove={(s) => toggle(s.key, s.time)} />
       </div>
 
-      <MonthDrawer C={C} availability={availability} dayByKey={lookupDay} selected={selected} toggle={toggle} />
+      <MonthDrawer C={C} availability={avail} dayByKey={lookupDay} selected={selected} toggle={toggle} />
 
       <div style={{
         position:'sticky', bottom:-36, marginTop:24,
