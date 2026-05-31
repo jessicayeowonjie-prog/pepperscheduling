@@ -122,7 +122,22 @@ function getSubmissionTakenSlots() {
   }
 }
 
-const AVAILABILITY = buildAvailability(getSubmissionTakenSlots());
+function getResearcherClosedSlots() {
+  try {
+    const closed = JSON.parse(localStorage.getItem('pepper-availability') || '[]');
+    return new Set(closed);
+  } catch(e) {
+    return new Set();
+  }
+}
+
+function combinedTakenSlots() {
+  const taken = getSubmissionTakenSlots();
+  getResearcherClosedSlots().forEach((k) => taken.add(k));
+  return taken;
+}
+
+const AVAILABILITY = buildAvailability(combinedTakenSlots());
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -423,7 +438,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVA
   // Refresh taken slots from submissions every 5 s; also deselect any slot that got taken
   React.useEffect(() => {
     const refresh = () => {
-      const built = buildAvailability(getSubmissionTakenSlots());
+      const built = buildAvailability(combinedTakenSlots());
       setAvail(built);
       setSelected((prev) => prev.filter((s) => {
         const day  = built.find((d) => d.key === s.key);

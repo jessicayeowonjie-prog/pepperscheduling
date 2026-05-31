@@ -419,6 +419,140 @@ function persistInbox(reqs) {
   try { localStorage.setItem(INBOX_KEY, JSON.stringify(reqs)); } catch(e) {}
 }
 
+const AVAILABILITY_KEY = 'pepper-availability';
+function loadClosedSlots() {
+  try { return JSON.parse(localStorage.getItem(AVAILABILITY_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+function persistClosedSlots(slots) {
+  try { localStorage.setItem(AVAILABILITY_KEY, JSON.stringify(slots)); } catch(e) {}
+}
+
+// ── TabNav ────────────────────────────────────────────────────────────────────
+function TabNav({ C, view, setView }) {
+  return (
+    <div style={{ display:'flex', borderBottom:`1px solid ${C.line}`, padding:'0 24px', background:C.surface, flexShrink:0 }}>
+      {[['inbox','신청 목록'],['calendar','일정 관리']].map(([v, label]) => (
+        <button key={v} onClick={() => setView(v)} style={{
+          padding:'9px 16px', border:'none', background:'transparent',
+          fontFamily:'inherit', fontSize:12, cursor:'pointer',
+          color: view===v ? C.ink : C.muted, fontWeight: view===v ? 500 : 400,
+          borderBottom: view===v ? `2px solid ${C.ink}` : '2px solid transparent',
+          marginBottom:-1, letterSpacing:0.1,
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+// ── DayCard (calendar view helper) ───────────────────────────────────────────
+function DayCard({ C, day, slotMap, closedSlots, toggleSlot }) {
+  const dow = KO_DAYS[day.date.getDay()];
+  return (
+    <div style={{ border:`1px solid ${C.line}`, borderRadius:8, overflow:'hidden', fontSize:10 }}>
+      <div style={{
+        padding:'5px 8px', background:C.surface, borderBottom:`1px solid ${C.line}`,
+        fontWeight:500, display:'flex', justifyContent:'space-between', fontSize:11,
+      }}>
+        <span>{day.date.getMonth()+1}/{day.date.getDate()}</span>
+        <span style={{ color:C.muted }}>{dow}</span>
+      </div>
+      <div style={{ padding:3, display:'flex', flexDirection:'column', gap:2 }}>
+        {day.slots.map((slot) => {
+          const k = `${day.key}_${slot.time}`;
+          const bookings = slotMap[k] || [];
+          const isClosed = closedSlots.includes(k);
+          const isHardTaken = slot.taken && bookings.length === 0;
+          const hasBooking = bookings.length > 0;
+          const allConfirmed = hasBooking && bookings.every((r) => r.status === 'confirmed');
+
+          let bg, color, borderColor, cursor;
+          if (isHardTaken) {
+            bg = '#ddd7d3'; color = C.muted; borderColor = 'transparent'; cursor = 'default';
+          } else if (hasBooking) {
+            bg = allConfirmed ? C.b : C.a; color = C.ink; borderColor = 'transparent'; cursor = 'default';
+          } else if (isClosed) {
+            bg = C.ink; color = C.surface; borderColor = 'transparent'; cursor = 'pointer';
+          } else {
+            bg = 'transparent'; color = C.ink; borderColor = C.line; cursor = 'pointer';
+          }
+
+          return (
+            <button key={slot.time} onClick={() => !isHardTaken && !hasBooking && toggleSlot(k)} style={{
+              width:'100%', textAlign:'left', padding:'3px 5px', borderRadius:3,
+              border:`1px solid ${borderColor}`, background:bg, color, cursor,
+              fontFamily:'inherit', fontSize:10, lineHeight:1.4,
+              display:'flex', justifyContent:'space-between', alignItems:'center', gap:2,
+            }}>
+              <span style={{ fontVariantNumeric:'tabular-nums', flexShrink:0 }}>{slot.time}</span>
+              {hasBooking && (
+                <span style={{ opacity:0.75, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:56 }}>
+                  {bookings.map((r) => r.name).join('/')}
+                </span>
+              )}
+              {isClosed && <span style={{ opacity:0.6, flexShrink:0 }}>✕</span>}
+            </button>
+          );
+        })}
+        {day.slots.length === 0 && (
+          <div style={{ padding:'4px 5px', color:C.muted, fontStyle:'italic' }}>슬롯 없음</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── CalendarView ──────────────────────────────────────────────────────────────
+function CalendarView({ C, reqs, closedSlots, toggleSlot }) {
+  const slotMap = React.useMemo(() => {
+    const map = {};
+    reqs.forEach((r) => {
+      (r.sessions || []).forEach((s) => {
+        const k = `${s.key}_${s.time}`;
+        if (!map[k]) map[k] = [];
+        map[k].push(r);
+      });
+    });
+    return map;
+  }, [reqs]);
+
+  const weeks = [AVAILABILITY.slice(0, 7), AVAILABILITY.slice(7)];
+
+  const legendItems = [
+    [C.bg, C.line, '가능'],
+    [C.a, 'transparent', '신청(대기)'],
+    [C.b, 'transparent', '신청(확정)'],
+    ['#ddd7d3', 'transparent', '사전 차단'],
+    [C.ink, 'transparent', '직접 차단'],
+  ];
+
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:'14px 20px 20px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:12, flexWrap:'wrap' }}>
+        <span style={{ fontSize:11, color:C.muted, letterSpacing:0.8, textTransform:'uppercase', flexShrink:0 }}>범례</span>
+        {legendItems.map(([bg, border, label]) => (
+          <span key={label} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.muted }}>
+            <span style={{ width:11, height:11, borderRadius:2, background:bg, border:`1px solid ${border}`, display:'inline-block', flexShrink:0 }} />
+            {label}
+          </span>
+        ))}
+        <span style={{ fontSize:11, color:C.muted, marginLeft:'auto', textAlign:'right' }}>
+          빈 슬롯 클릭 → 차단 / 차단된 슬롯 클릭 → 해제
+        </span>
+      </div>
+
+      {weeks.map((week, wi) => (
+        <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:6, marginBottom:6 }}>
+          {week.map((day) => (
+            <DayCard key={day.key} C={C} day={day} slotMap={slotMap}
+                     closedSlots={closedSlots} toggleSlot={toggleSlot} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── ResearcherInbox ───────────────────────────────────────────────────────────
 function ResearcherInbox() {
   const C = PALETTES.blush;
@@ -461,6 +595,13 @@ function ResearcherInbox() {
   const patchCurrent  = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
   const deleteCurrent = ()           => setReqs(reqs.filter((r) => r.id !== active));
 
+  const [view, setView]             = React.useState('inbox');
+  const [closedSlots, setClosedSlotsRaw] = React.useState(loadClosedSlots);
+  const setClosedSlots = (slots) => { setClosedSlotsRaw(slots); persistClosedSlots(slots); };
+  const toggleSlot = (k) => setClosedSlots(
+    closedSlots.includes(k) ? closedSlots.filter((s) => s !== k) : [...closedSlots, k]
+  );
+
   const frame = {
     width:1200, height:820, background:C.bg, color:C.ink,
     fontFamily:'"Inter","Helvetica Neue",system-ui,sans-serif',
@@ -469,11 +610,14 @@ function ResearcherInbox() {
     boxShadow:'0 1px 0 rgba(0,0,0,0.04), 0 24px 60px -30px rgba(0,0,0,0.18)',
   };
 
-  // Empty state
-  if (!current) {
-    return (
-      <div style={frame}>
-        <Header C={C} reqs={reqs} />
+  return (
+    <div style={frame}>
+      <Header C={C} reqs={reqs} />
+      <TabNav C={C} view={view} setView={setView} />
+
+      {view === 'calendar' ? (
+        <CalendarView C={C} reqs={reqs} closedSlots={closedSlots} toggleSlot={toggleSlot} />
+      ) : !current ? (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ textAlign:'center', maxWidth:320 }}>
             <div style={{ fontSize:11, letterSpacing:1.2, color:C.muted, textTransform:'uppercase', marginBottom:10 }}>받은편지함</div>
@@ -481,97 +625,92 @@ function ResearcherInbox() {
             <div style={{ fontSize:13, color:C.muted, lineHeight:1.6 }}>새 참여자 신청이 접수되면 이곳에 표시됩니다.</div>
           </div>
         </div>
-      </div>
-    );
-  }
+      ) : (
+        <div style={{ flex:1, display:'grid', gridTemplateColumns:'320px 1fr', minHeight:0 }}>
+          {/* List */}
+          <aside style={{ borderRight:`1px solid ${C.line}`, overflow:'auto', background:C.surface }}>
+            <div style={{ padding:'16px 18px 8px', fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase' }}>새 신청</div>
+            {reqs.map((r) => {
+              const isActive  = r.id === active;
+              const earliest  = r.sessions[0];
+              const firstDay  = dayByKey(earliest.key);
+              return (
+                <button key={r.id} onClick={() => setActive(r.id)} style={{
+                  width:'100%', textAlign:'left', padding:'14px 18px',
+                  background: isActive ? C.bg : 'transparent', border:'none',
+                  borderLeft: isActive ? `2px solid ${C.ink}` : '2px solid transparent',
+                  borderBottom:`1px solid ${C.line}`,
+                  cursor:'pointer', fontFamily:'inherit', color:C.ink,
+                  display:'flex', flexDirection:'column', gap:6,
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontSize:13, fontWeight:500 }}>{r.name}</span>
+                    <StatusPill C={C} status={r.status} />
+                  </div>
+                  <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                    {r.pid || '—'} · 첫 세션 {firstDay ? fmtKoDate(firstDay.date) : earliest.key} {earliest.time}
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted, fontVariantNumeric:'tabular-nums' }}>접수 {r.submittedAt}</div>
+                </button>
+              );
+            })}
+          </aside>
 
-  return (
-    <div style={frame}>
-      <Header C={C} reqs={reqs} />
-      <div style={{ flex:1, display:'grid', gridTemplateColumns:'320px 1fr', minHeight:0 }}>
-        {/* List */}
-        <aside style={{ borderRight:`1px solid ${C.line}`, overflow:'auto', background:C.surface }}>
-          <div style={{ padding:'16px 18px 8px', fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase' }}>새 신청</div>
-          {reqs.map((r) => {
-            const isActive  = r.id === active;
-            const earliest  = r.sessions[0];
-            const firstDay  = dayByKey(earliest.key);
-            return (
-              <button key={r.id} onClick={() => setActive(r.id)} style={{
-                width:'100%', textAlign:'left', padding:'14px 18px',
-                background: isActive ? C.bg : 'transparent', border:'none',
-                borderLeft: isActive ? `2px solid ${C.ink}` : '2px solid transparent',
-                borderBottom:`1px solid ${C.line}`,
-                cursor:'pointer', fontFamily:'inherit', color:C.ink,
-                display:'flex', flexDirection:'column', gap:6,
-              }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ fontSize:13, fontWeight:500 }}>{r.name}</span>
-                  <StatusPill C={C} status={r.status} />
-                </div>
-                <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
-                  {r.pid || '—'} · 첫 세션 {firstDay ? fmtKoDate(firstDay.date) : earliest.key} {earliest.time}
-                </div>
-                <div style={{ fontSize:11, color:C.muted, fontVariantNumeric:'tabular-nums' }}>접수 {r.submittedAt}</div>
-              </button>
-            );
-          })}
-        </aside>
-
-        {/* Detail */}
-        <main style={{ padding:'28px 36px 32px', overflow:'auto' }}>
-          <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:6 }}>
-            새 일정 신청 · {current.id}
-          </div>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:22 }}>
-            <h2 style={{ fontSize:24, fontWeight:500, margin:0, letterSpacing:-0.2 }}>
-              {current.name}님의 세션 신청
-            </h2>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-              {current.status === 'pending' ? (
-                <>
-                  <button onClick={() => setStatus(current.id, 'confirmed')} style={{
-                    padding:'9px 16px', borderRadius:999, background:C.ink, color:C.surface,
-                    border:'none', fontFamily:'inherit', fontSize:12, fontWeight:500, cursor:'pointer',
-                  }}>확정으로 변경</button>
-                  <button style={{
-                    padding:'9px 14px', borderRadius:999, background:'transparent',
-                    border:`1px solid ${C.line}`, color:C.ink, fontFamily:'inherit', fontSize:12, cursor:'pointer',
-                  }}>일정 변경 요청</button>
-                </>
-              ) : (
-                <span style={{ fontSize:12, color:C.muted }}>{current.submittedAt.slice(5)}에 확정됨</span>
-              )}
-              <DeleteRequestButton C={C} onDelete={deleteCurrent} />
+          {/* Detail */}
+          <main style={{ padding:'28px 36px 32px', overflow:'auto' }}>
+            <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:6 }}>
+              새 일정 신청 · {current.id}
             </div>
-          </div>
-
-          <section style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:22 }}>
-            <Cell C={C} k="이름" v={current.name} />
-            <Cell C={C} k="생년월일" v={current.dob} />
-            <Cell C={C} k="휴대전화" v={current.phone} mono />
-            <EditableCell C={C} k="참여자 ID" v={current.pid} mono placeholder="P-000"
-                          onChange={(v) => patchCurrent({ pid: v })} />
-          </section>
-
-          <SessionsBlock C={C} current={current} patchCurrent={patchCurrent} />
-
-          {/* SMS template */}
-          <section style={{ background:C.bg, border:`1px dashed ${C.line}`, borderRadius:12, padding:'16px 20px' }}>
-            <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:8 }}>
-              발송할 문자 미리보기
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:22 }}>
+              <h2 style={{ fontSize:24, fontWeight:500, margin:0, letterSpacing:-0.2 }}>
+                {current.name}님의 세션 신청
+              </h2>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {current.status === 'pending' ? (
+                  <>
+                    <button onClick={() => setStatus(current.id, 'confirmed')} style={{
+                      padding:'9px 16px', borderRadius:999, background:C.ink, color:C.surface,
+                      border:'none', fontFamily:'inherit', fontSize:12, fontWeight:500, cursor:'pointer',
+                    }}>확정으로 변경</button>
+                    <button style={{
+                      padding:'9px 14px', borderRadius:999, background:'transparent',
+                      border:`1px solid ${C.line}`, color:C.ink, fontFamily:'inherit', fontSize:12, cursor:'pointer',
+                    }}>일정 변경 요청</button>
+                  </>
+                ) : (
+                  <span style={{ fontSize:12, color:C.muted }}>{current.submittedAt.slice(5)}에 확정됨</span>
+                )}
+                <DeleteRequestButton C={C} onDelete={deleteCurrent} />
+              </div>
             </div>
-            <div style={{ fontSize:13, lineHeight:1.7, color:C.ink }}>
-              [Pepper Study] {current.name}님, 신청해 주신 3개 세션이 확정되었습니다.<br />
-              {current.sessions.map((s, i) => {
-                const d = dayByKey(s.key);
-                return <span key={i}>· {d ? fmtKoDate(d.date) : s.key} {s.time}<br /></span>;
-              })}
-              장소: 실험실 B3 · 변경 시 회신 부탁드립니다.
-            </div>
-          </section>
-        </main>
-      </div>
+
+            <section style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:22 }}>
+              <Cell C={C} k="이름" v={current.name} />
+              <Cell C={C} k="생년월일" v={current.dob} />
+              <Cell C={C} k="휴대전화" v={current.phone} mono />
+              <EditableCell C={C} k="참여자 ID" v={current.pid} mono placeholder="P-000"
+                            onChange={(v) => patchCurrent({ pid: v })} />
+            </section>
+
+            <SessionsBlock C={C} current={current} patchCurrent={patchCurrent} />
+
+            {/* SMS template */}
+            <section style={{ background:C.bg, border:`1px dashed ${C.line}`, borderRadius:12, padding:'16px 20px' }}>
+              <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:8 }}>
+                발송할 문자 미리보기
+              </div>
+              <div style={{ fontSize:13, lineHeight:1.7, color:C.ink }}>
+                [Pepper Study] {current.name}님, 신청해 주신 3개 세션이 확정되었습니다.<br />
+                {current.sessions.map((s, i) => {
+                  const d = dayByKey(s.key);
+                  return <span key={i}>· {d ? fmtKoDate(d.date) : s.key} {s.time}<br /></span>;
+                })}
+                장소: 실험실 B3 · 변경 시 회신 부탁드립니다.
+              </div>
+            </section>
+          </main>
+        </div>
+      )}
     </div>
   );
 }
