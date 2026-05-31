@@ -429,14 +429,17 @@ function persistInbox(reqs) {
 const AVAILABILITY_KEY   = 'pepper-availability';
 const OPENED_KEY         = 'pepper-opened-slots';
 const DELETED_ITEMS_KEY  = 'pepper-deleted-items';
+const CUSTOM_KEY         = 'pepper-custom-slots';
 
 function loadClosedSlots()  { try { return JSON.parse(localStorage.getItem(AVAILABILITY_KEY)  || '[]'); } catch(e) { return []; } }
 function loadOpenedSlots()  { try { return JSON.parse(localStorage.getItem(OPENED_KEY)         || '[]'); } catch(e) { return []; } }
 function loadDeletedItems() { try { return JSON.parse(localStorage.getItem(DELETED_ITEMS_KEY)  || '[]'); } catch(e) { return []; } }
+function loadCustomSlots()  { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)          || '[]'); } catch(e) { return []; } }
 
 function persistClosedSlots(slots)  { try { localStorage.setItem(AVAILABILITY_KEY,  JSON.stringify(slots)); } catch(e) {} }
 function persistOpenedSlots(slots)  { try { localStorage.setItem(OPENED_KEY,         JSON.stringify(slots)); } catch(e) {} }
 function persistDeletedItems(items) { try { localStorage.setItem(DELETED_ITEMS_KEY,  JSON.stringify(items)); } catch(e) {} }
+function persistCustomSlots(slots)  { try { localStorage.setItem(CUSTOM_KEY,          JSON.stringify(slots)); } catch(e) {} }
 
 // ── TabNav ────────────────────────────────────────────────────────────────────
 function TabNav({ C, view, setView }) {
@@ -456,8 +459,27 @@ function TabNav({ C, view, setView }) {
 }
 
 // ── DayCard (calendar view helper) ───────────────────────────────────────────
-function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggleOpenSlot }) {
+function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
   const dow = KO_DAYS[day.date.getDay()];
+  const [adding,  setAdding]  = React.useState(false);
+  const [newTime, setNewTime] = React.useState('');
+  const inputRef = React.useRef(null);
+  React.useEffect(() => { if (adding) inputRef.current?.focus(); }, [adding]);
+
+  const confirmAdd = () => {
+    if (newTime) {
+      const taken = [...day.slots, ...customSlots.filter((s) => s.key === day.key)];
+      if (!taken.some((s) => s.time === newTime)) addCustomSlot({ key: day.key, time: newTime });
+    }
+    setNewTime(''); setAdding(false);
+  };
+
+  const dayCustom = customSlots.filter((s) => s.key === day.key);
+  const allSlots  = [
+    ...day.slots,
+    ...dayCustom.map((s) => ({ time: s.time, taken: false, isCustom: true })),
+  ].sort((a, b) => a.time.localeCompare(b.time));
+
   return (
     <div style={{ border:`1px solid ${C.line}`, borderRadius:8, overflow:'hidden', fontSize:10 }}>
       <div style={{
@@ -468,15 +490,15 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
         <span style={{ color:C.muted }}>{dow}</span>
       </div>
       <div style={{ padding:3, display:'flex', flexDirection:'column', gap:2 }}>
-        {day.slots.map((slot) => {
+        {allSlots.map((slot) => {
           const k            = `${day.key}_${slot.time}`;
           const bookings     = slotMap[k] || [];
           const hasBooking   = bookings.length > 0;
           const allConfirmed = hasBooking && bookings.every((r) => r.status === 'confirmed');
-          const isOpened     = openedSlots.includes(k);   // researcher un-blocked a preset slot
+          const isOpened     = openedSlots.includes(k);
           const isClosed     = closedSlots.includes(k);
-          // slot.taken = preset/hardcoded block; isOpened = researcher chose to re-open it
           const isPreset     = slot.taken && !isOpened && !hasBooking;
+          const isCustom     = slot.isCustom;
 
           let bg, color, borderColor, cursor, title;
           if (hasBooking) {
@@ -484,42 +506,78 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
             cursor = 'default'; title = bookings.map((r) => r.name).join(', ');
           } else if (isPreset) {
             bg = '#ddd7d3'; color = C.muted; borderColor = 'transparent';
-            cursor = 'pointer'; title = '클릭하여 이 슬롯을 참여자에게 개방';
+            cursor = 'pointer'; title = '클릭하여 개방';
           } else if (isClosed) {
             bg = C.ink; color = C.surface; borderColor = 'transparent';
             cursor = 'pointer'; title = '클릭하여 차단 해제';
           } else {
-            bg = 'transparent'; color = C.ink; borderColor = C.line;
-            cursor = 'pointer'; title = '클릭하여 차단';
+            bg = isCustom ? C.surface : 'transparent';
+            color = C.ink; borderColor = C.line;
+            cursor = 'pointer'; title = isCustom ? '직접 추가한 슬롯 · 클릭하여 차단' : '클릭하여 차단';
           }
 
           const handleClick = () => {
             if (hasBooking) return;
-            if (isPreset)   return toggleOpenSlot(k);  // preset → open
-            if (isOpened)   return toggleOpenSlot(k);  // re-opened preset → revert to preset
-            toggleSlot(k);                              // open ↔ researcher-closed
+            if (isPreset || isOpened) return toggleOpenSlot(k);
+            toggleSlot(k);
           };
 
           return (
-            <button key={slot.time} onClick={handleClick} title={title} style={{
-              width:'100%', textAlign:'left', padding:'3px 5px', borderRadius:3,
-              border:`1px solid ${borderColor}`, background:bg, color, cursor,
-              fontFamily:'inherit', fontSize:10, lineHeight:1.4,
-              display:'flex', justifyContent:'space-between', alignItems:'center', gap:2,
-            }}>
-              <span style={{ fontVariantNumeric:'tabular-nums', flexShrink:0 }}>{slot.time}</span>
-              {hasBooking && (
-                <span style={{ opacity:0.75, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:56 }}>
-                  {bookings.map((r) => r.name).join('/')}
-                </span>
+            <div key={slot.time} style={{ display:'flex', alignItems:'stretch', gap:1 }}>
+              <button onClick={handleClick} title={title} style={{
+                flex:1, textAlign:'left', padding:'3px 5px', borderRadius:3,
+                border:`1px solid ${borderColor}`, background:bg, color, cursor,
+                fontFamily:'inherit', fontSize:10, lineHeight:1.4,
+                display:'flex', justifyContent:'space-between', alignItems:'center', gap:2,
+              }}>
+                <span style={{ fontVariantNumeric:'tabular-nums', flexShrink:0 }}>{slot.time}</span>
+                {hasBooking && (
+                  <span style={{ opacity:0.75, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCustom ? 44 : 56 }}>
+                    {bookings.map((r) => r.name).join('/')}
+                  </span>
+                )}
+                {isClosed  && <span style={{ opacity:0.6, flexShrink:0 }}>✕</span>}
+                {isOpened  && <span style={{ opacity:0.6, flexShrink:0, fontSize:9 }}>↩</span>}
+              </button>
+              {isCustom && !hasBooking && (
+                <button onClick={() => removeCustomSlot(day.key, slot.time)} title="슬롯 삭제" style={{
+                  padding:'0 5px', background:'transparent', border:'none',
+                  color:C.muted, cursor:'pointer', fontSize:9, flexShrink:0,
+                }}>✕</button>
               )}
-              {isClosed && <span style={{ opacity:0.6, flexShrink:0 }}>✕</span>}
-              {isOpened  && <span style={{ opacity:0.6, flexShrink:0, fontSize:9 }}>↩</span>}
-            </button>
+            </div>
           );
         })}
-        {day.slots.length === 0 && (
+
+        {allSlots.length === 0 && (
           <div style={{ padding:'4px 5px', color:C.muted, fontStyle:'italic' }}>슬롯 없음</div>
+        )}
+
+        {adding ? (
+          <div style={{ display:'flex', gap:2, padding:'2px 3px', alignItems:'center', marginTop:1 }}>
+            <input ref={inputRef} type="time" value={newTime}
+              onChange={(e) => setNewTime(e.target.value)}
+              onKeyDown={(e) => { if (e.key==='Enter') confirmAdd(); if (e.key==='Escape') { setAdding(false); setNewTime(''); } }}
+              style={{
+                flex:1, fontSize:10, border:`1px solid ${C.ink}`, borderRadius:3,
+                padding:'3px 4px', fontFamily:'inherit', background:C.bg, color:C.ink, outline:'none',
+              }} />
+            <button onClick={confirmAdd} style={{
+              padding:'3px 6px', fontSize:9, borderRadius:3, border:'none',
+              background:C.ink, color:C.surface, cursor:'pointer', flexShrink:0,
+            }}>추가</button>
+            <button onClick={() => { setAdding(false); setNewTime(''); }} style={{
+              padding:'3px 5px', fontSize:9, borderRadius:3, background:'transparent',
+              border:`1px solid ${C.line}`, color:C.muted, cursor:'pointer', flexShrink:0,
+            }}>✕</button>
+          </div>
+        ) : (
+          <button onClick={() => setAdding(true)} style={{
+            width:'100%', padding:'3px 5px', background:'transparent',
+            border:`1px dashed ${C.line}`, borderRadius:3,
+            color:C.muted, fontSize:10, cursor:'pointer', fontFamily:'inherit',
+            textAlign:'center', marginTop:1,
+          }}>+ 슬롯 추가</button>
         )}
       </div>
     </div>
@@ -527,7 +585,7 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
 }
 
 // ── CalendarView ──────────────────────────────────────────────────────────────
-function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpenSlot }) {
+function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
   const slotMap = React.useMemo(() => {
     const map = {};
     reqs.forEach((r) => {
@@ -567,7 +625,8 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpe
           {week.map((day) => (
             <DayCard key={day.key} C={C} day={day} slotMap={slotMap}
                      closedSlots={closedSlots} toggleSlot={toggleSlot}
-                     openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot} />
+                     openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
+                     customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
           ))}
         </div>
       ))}
@@ -654,6 +713,14 @@ function ResearcherInbox() {
     openedSlots.includes(k) ? openedSlots.filter((s) => s !== k) : [...openedSlots, k]
   );
 
+  const [customSlots, setCustomSlotsRaw] = React.useState(loadCustomSlots);
+  const setCustomSlots = (slots) => { setCustomSlotsRaw(slots); persistCustomSlots(slots); };
+  const addCustomSlot    = (slot) => {
+    if (!customSlots.find((s) => s.key === slot.key && s.time === slot.time))
+      setCustomSlots([...customSlots, slot]);
+  };
+  const removeCustomSlot = (key, time) => setCustomSlots(customSlots.filter((s) => !(s.key === key && s.time === time)));
+
   const frame = {
     width:1200, height:820, background:C.bg, color:C.ink,
     fontFamily:'"Inter","Helvetica Neue",system-ui,sans-serif',
@@ -669,7 +736,8 @@ function ResearcherInbox() {
 
       {view === 'calendar' ? (
         <CalendarView C={C} reqs={reqs} closedSlots={closedSlots} toggleSlot={toggleSlot}
-                      openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot} />
+                      openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
+                      customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
       ) : !current ? (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ textAlign:'center', maxWidth:320 }}>

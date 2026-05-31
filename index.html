@@ -76,7 +76,7 @@ const DAY_HOURS = {
   '2026-07-25': [ 9, 21],
 };
 
-function buildAvailability(extraTaken = new Set(), openedSlots = new Set()) {
+function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), customSlots = []) {
   const taken = new Set([
     '2026-07-13_10:00','2026-07-13_14:50',
     '2026-07-14_11:50','2026-07-14_16:50',
@@ -105,6 +105,12 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set()) {
         while (m >= 60) { m -= 60; h++; }
       }
     }
+    // Inject researcher-added custom slots
+    (customSlots || []).filter((s) => s.key === key).forEach((s) => {
+      if (!slots.find((sl) => sl.time === s.time))
+        slots.push({ time: s.time, taken: taken.has(`${key}_${s.time}`) });
+    });
+    slots.sort((a, b) => a.time.localeCompare(b.time));
     days.push({ date: d, key, slots });
   }
   return days;
@@ -137,13 +143,18 @@ function getResearcherOpenedSlots() {
   catch(e) { return new Set(); }
 }
 
+function getResearcherCustomSlots() {
+  try { return JSON.parse(localStorage.getItem('pepper-custom-slots') || '[]'); }
+  catch(e) { return []; }
+}
+
 function combinedTakenSlots() {
   const taken = getSubmissionTakenSlots();
   getResearcherClosedSlots().forEach((k) => taken.add(k));
   return taken;
 }
 
-const AVAILABILITY = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots());
+const AVAILABILITY = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots(), getResearcherCustomSlots());
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -444,7 +455,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVA
   // Refresh taken slots from submissions every 5 s; also deselect any slot that got taken
   React.useEffect(() => {
     const refresh = () => {
-      const built = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots());
+      const built = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots(), getResearcherCustomSlots());
       setAvail(built);
       setSelected((prev) => prev.filter((s) => {
         const day  = built.find((d) => d.key === s.key);
