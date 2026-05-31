@@ -393,22 +393,29 @@ function SessionsBlock({ C, current, patchCurrent }) {
 // ── LocalStorage helpers ──────────────────────────────────────────────────────
 const SUBMISSIONS_KEY = 'pepper-submissions';
 const INBOX_KEY       = 'pepper-inbox';
+const DELETED_KEY     = 'pepper-deleted-ids';
+
+function loadDeletedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_KEY) || '[]')); }
+  catch(e) { return new Set(); }
+}
+function persistDeletedIds(ids) {
+  try { localStorage.setItem(DELETED_KEY, JSON.stringify([...ids])); } catch(e) {}
+}
 
 function loadInbox() {
   try {
-    // Real submissions from participant page
-    const real = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
-    // Researcher-modified state (patches, status, deletes) from previous session
-    const saved = localStorage.getItem(INBOX_KEY);
+    const real      = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+    const deleted   = loadDeletedIds();
+    const saved     = localStorage.getItem(INBOX_KEY);
     if (saved) {
       const inboxReqs = JSON.parse(saved);
       const existingIds = new Set(inboxReqs.map((r) => r.id));
-      const newReal = real.filter((r) => !existingIds.has(r.id));
+      const newReal = real.filter((r) => !existingIds.has(r.id) && !deleted.has(r.id));
       return [...newReal, ...inboxReqs];
     }
-    // First load: prepend any real submissions to mock data
     const mockIds = new Set(MOCK_REQUESTS.map((r) => r.id));
-    const newReal = real.filter((r) => !mockIds.has(r.id));
+    const newReal = real.filter((r) => !mockIds.has(r.id) && !deleted.has(r.id));
     return [...newReal, ...MOCK_REQUESTS];
   } catch(e) {
     return MOCK_REQUESTS;
@@ -570,10 +577,11 @@ function ResearcherInbox() {
   React.useEffect(() => {
     const check = () => {
       try {
-        const real = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+        const real    = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
+        const deleted = loadDeletedIds();
         setReqsRaw((prev) => {
           const existingIds = new Set(prev.map((r) => r.id));
-          const newOnes = real.filter((r) => !existingIds.has(r.id));
+          const newOnes = real.filter((r) => !existingIds.has(r.id) && !deleted.has(r.id));
           if (newOnes.length === 0) return prev;
           const merged = [...newOnes, ...prev];
           persistInbox(merged);
@@ -593,7 +601,12 @@ function ResearcherInbox() {
 
   const setStatus     = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
   const patchCurrent  = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
-  const deleteCurrent = ()           => setReqs(reqs.filter((r) => r.id !== active));
+  const deleteCurrent = () => {
+    const ids = loadDeletedIds();
+    ids.add(active);
+    persistDeletedIds(ids);
+    setReqs(reqs.filter((r) => r.id !== active));
+  };
 
   const [view, setView]             = React.useState('inbox');
   const [closedSlots, setClosedSlotsRaw] = React.useState(loadClosedSlots);
