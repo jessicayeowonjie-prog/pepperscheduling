@@ -426,14 +426,17 @@ function persistInbox(reqs) {
   try { localStorage.setItem(INBOX_KEY, JSON.stringify(reqs)); } catch(e) {}
 }
 
-const AVAILABILITY_KEY = 'pepper-availability';
-function loadClosedSlots() {
-  try { return JSON.parse(localStorage.getItem(AVAILABILITY_KEY) || '[]'); }
-  catch(e) { return []; }
-}
-function persistClosedSlots(slots) {
-  try { localStorage.setItem(AVAILABILITY_KEY, JSON.stringify(slots)); } catch(e) {}
-}
+const AVAILABILITY_KEY   = 'pepper-availability';
+const OPENED_KEY         = 'pepper-opened-slots';
+const DELETED_ITEMS_KEY  = 'pepper-deleted-items';
+
+function loadClosedSlots()  { try { return JSON.parse(localStorage.getItem(AVAILABILITY_KEY)  || '[]'); } catch(e) { return []; } }
+function loadOpenedSlots()  { try { return JSON.parse(localStorage.getItem(OPENED_KEY)         || '[]'); } catch(e) { return []; } }
+function loadDeletedItems() { try { return JSON.parse(localStorage.getItem(DELETED_ITEMS_KEY)  || '[]'); } catch(e) { return []; } }
+
+function persistClosedSlots(slots)  { try { localStorage.setItem(AVAILABILITY_KEY,  JSON.stringify(slots)); } catch(e) {} }
+function persistOpenedSlots(slots)  { try { localStorage.setItem(OPENED_KEY,         JSON.stringify(slots)); } catch(e) {} }
+function persistDeletedItems(items) { try { localStorage.setItem(DELETED_ITEMS_KEY,  JSON.stringify(items)); } catch(e) {} }
 
 // ── TabNav ────────────────────────────────────────────────────────────────────
 function TabNav({ C, view, setView }) {
@@ -453,7 +456,7 @@ function TabNav({ C, view, setView }) {
 }
 
 // ── DayCard (calendar view helper) ───────────────────────────────────────────
-function DayCard({ C, day, slotMap, closedSlots, toggleSlot }) {
+function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggleOpenSlot }) {
   const dow = KO_DAYS[day.date.getDay()];
   return (
     <div style={{ border:`1px solid ${C.line}`, borderRadius:8, overflow:'hidden', fontSize:10 }}>
@@ -466,26 +469,39 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot }) {
       </div>
       <div style={{ padding:3, display:'flex', flexDirection:'column', gap:2 }}>
         {day.slots.map((slot) => {
-          const k = `${day.key}_${slot.time}`;
-          const bookings = slotMap[k] || [];
-          const isClosed = closedSlots.includes(k);
-          const isHardTaken = slot.taken && bookings.length === 0;
-          const hasBooking = bookings.length > 0;
+          const k            = `${day.key}_${slot.time}`;
+          const bookings     = slotMap[k] || [];
+          const hasBooking   = bookings.length > 0;
           const allConfirmed = hasBooking && bookings.every((r) => r.status === 'confirmed');
+          const isOpened     = openedSlots.includes(k);   // researcher un-blocked a preset slot
+          const isClosed     = closedSlots.includes(k);
+          // slot.taken = preset/hardcoded block; isOpened = researcher chose to re-open it
+          const isPreset     = slot.taken && !isOpened && !hasBooking;
 
-          let bg, color, borderColor, cursor;
-          if (isHardTaken) {
-            bg = '#ddd7d3'; color = C.muted; borderColor = 'transparent'; cursor = 'default';
-          } else if (hasBooking) {
-            bg = allConfirmed ? C.b : C.a; color = C.ink; borderColor = 'transparent'; cursor = 'default';
+          let bg, color, borderColor, cursor, title;
+          if (hasBooking) {
+            bg = allConfirmed ? C.b : C.a; color = C.ink; borderColor = 'transparent';
+            cursor = 'default'; title = bookings.map((r) => r.name).join(', ');
+          } else if (isPreset) {
+            bg = '#ddd7d3'; color = C.muted; borderColor = 'transparent';
+            cursor = 'pointer'; title = '클릭하여 이 슬롯을 참여자에게 개방';
           } else if (isClosed) {
-            bg = C.ink; color = C.surface; borderColor = 'transparent'; cursor = 'pointer';
+            bg = C.ink; color = C.surface; borderColor = 'transparent';
+            cursor = 'pointer'; title = '클릭하여 차단 해제';
           } else {
-            bg = 'transparent'; color = C.ink; borderColor = C.line; cursor = 'pointer';
+            bg = 'transparent'; color = C.ink; borderColor = C.line;
+            cursor = 'pointer'; title = '클릭하여 차단';
           }
 
+          const handleClick = () => {
+            if (hasBooking) return;
+            if (isPreset)   return toggleOpenSlot(k);  // preset → open
+            if (isOpened)   return toggleOpenSlot(k);  // re-opened preset → revert to preset
+            toggleSlot(k);                              // open ↔ researcher-closed
+          };
+
           return (
-            <button key={slot.time} onClick={() => !isHardTaken && !hasBooking && toggleSlot(k)} style={{
+            <button key={slot.time} onClick={handleClick} title={title} style={{
               width:'100%', textAlign:'left', padding:'3px 5px', borderRadius:3,
               border:`1px solid ${borderColor}`, background:bg, color, cursor,
               fontFamily:'inherit', fontSize:10, lineHeight:1.4,
@@ -498,6 +514,7 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot }) {
                 </span>
               )}
               {isClosed && <span style={{ opacity:0.6, flexShrink:0 }}>✕</span>}
+              {isOpened  && <span style={{ opacity:0.6, flexShrink:0, fontSize:9 }}>↩</span>}
             </button>
           );
         })}
@@ -510,7 +527,7 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot }) {
 }
 
 // ── CalendarView ──────────────────────────────────────────────────────────────
-function CalendarView({ C, reqs, closedSlots, toggleSlot }) {
+function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpenSlot }) {
   const slotMap = React.useMemo(() => {
     const map = {};
     reqs.forEach((r) => {
@@ -526,16 +543,16 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot }) {
   const weeks = [AVAILABILITY.slice(0, 7), AVAILABILITY.slice(7)];
 
   const legendItems = [
-    [C.bg, C.line, '가능'],
+    [C.bg, C.line, '가능 (클릭 → 차단)'],
     [C.a, 'transparent', '신청(대기)'],
     [C.b, 'transparent', '신청(확정)'],
-    ['#ddd7d3', 'transparent', '사전 차단'],
-    [C.ink, 'transparent', '직접 차단'],
+    ['#ddd7d3', 'transparent', '기본 차단 (클릭 → 개방)'],
+    [C.ink, 'transparent', '직접 차단 (클릭 → 해제)'],
   ];
 
   return (
     <div style={{ flex:1, overflow:'auto', padding:'14px 20px 20px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:12, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:C.muted, letterSpacing:0.8, textTransform:'uppercase', flexShrink:0 }}>범례</span>
         {legendItems.map(([bg, border, label]) => (
           <span key={label} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.muted }}>
@@ -543,16 +560,14 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot }) {
             {label}
           </span>
         ))}
-        <span style={{ fontSize:11, color:C.muted, marginLeft:'auto', textAlign:'right' }}>
-          빈 슬롯 클릭 → 차단 / 차단된 슬롯 클릭 → 해제
-        </span>
       </div>
 
       {weeks.map((week, wi) => (
         <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:6, marginBottom:6 }}>
           {week.map((day) => (
             <DayCard key={day.key} C={C} day={day} slotMap={slotMap}
-                     closedSlots={closedSlots} toggleSlot={toggleSlot} />
+                     closedSlots={closedSlots} toggleSlot={toggleSlot}
+                     openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot} />
           ))}
         </div>
       ))}
@@ -602,17 +617,41 @@ function ResearcherInbox() {
   const setStatus     = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
   const patchCurrent  = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
   const deleteCurrent = () => {
+    const item = reqs.find((r) => r.id === active);
+    if (item) {
+      const items = loadDeletedItems();
+      persistDeletedItems([item, ...items]);
+      setDeletedItems((prev) => [item, ...prev]);
+    }
     const ids = loadDeletedIds();
     ids.add(active);
     persistDeletedIds(ids);
     setReqs(reqs.filter((r) => r.id !== active));
   };
 
+  const restoreItem = (item) => {
+    const ids = loadDeletedIds(); ids.delete(item.id); persistDeletedIds(ids);
+    const items = loadDeletedItems().filter((i) => i.id !== item.id);
+    persistDeletedItems(items);
+    setDeletedItems(items);
+    setReqs([item, ...reqs]);
+    setActive(item.id);
+  };
+
   const [view, setView]             = React.useState('inbox');
+  const [showDeleted, setShowDeleted] = React.useState(false);
+  const [deletedItems, setDeletedItems] = React.useState(loadDeletedItems);
+
   const [closedSlots, setClosedSlotsRaw] = React.useState(loadClosedSlots);
   const setClosedSlots = (slots) => { setClosedSlotsRaw(slots); persistClosedSlots(slots); };
   const toggleSlot = (k) => setClosedSlots(
     closedSlots.includes(k) ? closedSlots.filter((s) => s !== k) : [...closedSlots, k]
+  );
+
+  const [openedSlots, setOpenedSlotsRaw] = React.useState(loadOpenedSlots);
+  const setOpenedSlots = (slots) => { setOpenedSlotsRaw(slots); persistOpenedSlots(slots); };
+  const toggleOpenSlot = (k) => setOpenedSlots(
+    openedSlots.includes(k) ? openedSlots.filter((s) => s !== k) : [...openedSlots, k]
   );
 
   const frame = {
@@ -629,7 +668,8 @@ function ResearcherInbox() {
       <TabNav C={C} view={view} setView={setView} />
 
       {view === 'calendar' ? (
-        <CalendarView C={C} reqs={reqs} closedSlots={closedSlots} toggleSlot={toggleSlot} />
+        <CalendarView C={C} reqs={reqs} closedSlots={closedSlots} toggleSlot={toggleSlot}
+                      openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot} />
       ) : !current ? (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
           <div style={{ textAlign:'center', maxWidth:320 }}>
@@ -641,32 +681,66 @@ function ResearcherInbox() {
       ) : (
         <div style={{ flex:1, display:'grid', gridTemplateColumns:'320px 1fr', minHeight:0 }}>
           {/* List */}
-          <aside style={{ borderRight:`1px solid ${C.line}`, overflow:'auto', background:C.surface }}>
+          <aside style={{ borderRight:`1px solid ${C.line}`, overflow:'auto', background:C.surface, display:'flex', flexDirection:'column' }}>
             <div style={{ padding:'16px 18px 8px', fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase' }}>새 신청</div>
-            {reqs.map((r) => {
-              const isActive  = r.id === active;
-              const earliest  = r.sessions[0];
-              const firstDay  = dayByKey(earliest.key);
-              return (
-                <button key={r.id} onClick={() => setActive(r.id)} style={{
-                  width:'100%', textAlign:'left', padding:'14px 18px',
-                  background: isActive ? C.bg : 'transparent', border:'none',
-                  borderLeft: isActive ? `2px solid ${C.ink}` : '2px solid transparent',
-                  borderBottom:`1px solid ${C.line}`,
-                  cursor:'pointer', fontFamily:'inherit', color:C.ink,
-                  display:'flex', flexDirection:'column', gap:6,
+            <div style={{ flex:1 }}>
+              {reqs.map((r) => {
+                const isActive  = r.id === active;
+                const earliest  = r.sessions[0];
+                const firstDay  = dayByKey(earliest.key);
+                return (
+                  <button key={r.id} onClick={() => setActive(r.id)} style={{
+                    width:'100%', textAlign:'left', padding:'14px 18px',
+                    background: isActive ? C.bg : 'transparent', border:'none',
+                    borderLeft: isActive ? `2px solid ${C.ink}` : '2px solid transparent',
+                    borderBottom:`1px solid ${C.line}`,
+                    cursor:'pointer', fontFamily:'inherit', color:C.ink,
+                    display:'flex', flexDirection:'column', gap:6,
+                  }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:13, fontWeight:500 }}>{r.name}</span>
+                      <StatusPill C={C} status={r.status} />
+                    </div>
+                    <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                      {r.pid || '—'} · 첫 세션 {firstDay ? fmtKoDate(firstDay.date) : earliest.key} {earliest.time}
+                    </div>
+                    <div style={{ fontSize:11, color:C.muted, fontVariantNumeric:'tabular-nums' }}>접수 {r.submittedAt}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Deleted items section */}
+            {deletedItems.length > 0 && (
+              <div style={{ borderTop:`1px solid ${C.line}`, flexShrink:0 }}>
+                <button onClick={() => setShowDeleted((v) => !v)} style={{
+                  width:'100%', textAlign:'left', padding:'10px 18px',
+                  background:'transparent', border:'none', cursor:'pointer',
+                  fontFamily:'inherit', fontSize:11, color:C.muted,
+                  display:'flex', justifyContent:'space-between', alignItems:'center',
                 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontSize:13, fontWeight:500 }}>{r.name}</span>
-                    <StatusPill C={C} status={r.status} />
-                  </div>
-                  <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
-                    {r.pid || '—'} · 첫 세션 {firstDay ? fmtKoDate(firstDay.date) : earliest.key} {earliest.time}
-                  </div>
-                  <div style={{ fontSize:11, color:C.muted, fontVariantNumeric:'tabular-nums' }}>접수 {r.submittedAt}</div>
+                  <span>삭제된 항목 ({deletedItems.length})</span>
+                  <span>{showDeleted ? '▲' : '▼'}</span>
                 </button>
-              );
-            })}
+                {showDeleted && deletedItems.map((item) => (
+                  <div key={item.id} style={{
+                    padding:'10px 18px', borderTop:`1px solid ${C.line}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    background:C.bg,
+                  }}>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:500, color:C.ink }}>{item.name}</div>
+                      <div style={{ fontSize:11, color:C.muted }}>{item.submittedAt}</div>
+                    </div>
+                    <button onClick={() => restoreItem(item)} style={{
+                      padding:'4px 10px', borderRadius:999, fontSize:11,
+                      background:'transparent', border:`1px solid ${C.line}`,
+                      color:C.ink, fontFamily:'inherit', cursor:'pointer',
+                    }}>복원</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </aside>
 
           {/* Detail */}

@@ -76,7 +76,7 @@ const DAY_HOURS = {
   '2026-07-25': [ 9, 21],
 };
 
-function buildAvailability(extraTaken = new Set()) {
+function buildAvailability(extraTaken = new Set(), openedSlots = new Set()) {
   const taken = new Set([
     '2026-07-13_10:00','2026-07-13_14:50',
     '2026-07-14_11:50','2026-07-14_16:50',
@@ -88,6 +88,7 @@ function buildAvailability(extraTaken = new Set()) {
     '2026-07-24_13:05',
   ]);
   extraTaken.forEach((t) => taken.add(t));
+  openedSlots.forEach((k) => taken.delete(k));
   const days = [];
   for (let i = 0; i < 14; i++) {
     const d    = addDays(TODAY, i);
@@ -131,13 +132,18 @@ function getResearcherClosedSlots() {
   }
 }
 
+function getResearcherOpenedSlots() {
+  try { return new Set(JSON.parse(localStorage.getItem('pepper-opened-slots') || '[]')); }
+  catch(e) { return new Set(); }
+}
+
 function combinedTakenSlots() {
   const taken = getSubmissionTakenSlots();
   getResearcherClosedSlots().forEach((k) => taken.add(k));
   return taken;
 }
 
-const AVAILABILITY = buildAvailability(combinedTakenSlots());
+const AVAILABILITY = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots());
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -438,7 +444,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVA
   // Refresh taken slots from submissions every 5 s; also deselect any slot that got taken
   React.useEffect(() => {
     const refresh = () => {
-      const built = buildAvailability(combinedTakenSlots());
+      const built = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots());
       setAvail(built);
       setSelected((prev) => prev.filter((s) => {
         const day  = built.find((d) => d.key === s.key);
