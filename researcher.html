@@ -642,9 +642,11 @@ function ResearcherInbox() {
 
   // Persist every change and keep active pointing at a valid entry
   const setReqs = (next) => {
-    const arr = typeof next === 'function' ? next(reqs) : next;
-    setReqsRaw(arr);
-    persistInbox(arr);
+    setReqsRaw((prev) => {
+      const arr = typeof next === 'function' ? next(prev) : next;
+      persistInbox(arr);
+      return arr;
+    });
   };
 
   // Poll every 3 s for new participant submissions
@@ -673,19 +675,23 @@ function ResearcherInbox() {
 
   const current = reqs.find((r) => r.id === active) || reqs[0];
 
-  const setStatus     = (id, status) => setReqs(reqs.map((r) => r.id===id ? { ...r, status } : r));
-  const patchCurrent  = (patch)      => setReqs(reqs.map((r) => r.id===active ? { ...r, ...patch } : r));
+  const setStatus     = (id, status) => setReqs((prev) => prev.map((r) => r.id===id ? { ...r, status } : r));
+  const patchCurrent  = (patch)      => setReqs((prev) => prev.map((r) => r.id===active ? { ...r, ...patch } : r));
   const deleteCurrent = () => {
-    const item = reqs.find((r) => r.id === active);
-    if (item) {
-      const items = loadDeletedItems();
-      persistDeletedItems([item, ...items]);
-      setDeletedItems((prev) => [item, ...prev]);
-    }
-    const ids = loadDeletedIds();
-    ids.add(active);
-    persistDeletedIds(ids);
-    setReqs(reqs.filter((r) => r.id !== active));
+    setReqsRaw((prev) => {
+      const item = prev.find((r) => r.id === active);
+      if (item) {
+        const items = loadDeletedItems();
+        persistDeletedItems([item, ...items]);
+        setDeletedItems((di) => [item, ...di]);
+      }
+      const ids = loadDeletedIds();
+      ids.add(active);
+      persistDeletedIds(ids);
+      const next = prev.filter((r) => r.id !== active);
+      persistInbox(next);
+      return next;
+    });
   };
 
   const restoreItem = (item) => {
@@ -693,7 +699,7 @@ function ResearcherInbox() {
     const items = loadDeletedItems().filter((i) => i.id !== item.id);
     persistDeletedItems(items);
     setDeletedItems(items);
-    setReqs([item, ...reqs]);
+    setReqs((prev) => [item, ...prev]);
     setActive(item.id);
   };
 
