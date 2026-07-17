@@ -93,36 +93,6 @@ function buildAvailability() {
 const AVAILABILITY = buildAvailability();
 const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const MOCK_REQUESTS = [
-  {
-    id:'req-12', name:'김민지', dob:'2002-08-14', phone:'010-2845-3119', pid:'P-024',
-    submittedAt:'2026-07-08 14:22', status:'pending',
-    sessions:[
-      { key:'2026-07-13', time:'10:55' },
-      { key:'2026-07-16', time:'14:00' },
-      { key:'2026-07-20', time:'15:55' },
-    ],
-  },
-  {
-    id:'req-11', name:'박지훈', dob:'1999-02-03', phone:'010-7712-0044', pid:'P-023',
-    submittedAt:'2026-07-08 11:08', status:'pending',
-    sessions:[
-      { key:'2026-07-14', time:'09:55' },
-      { key:'2026-07-18', time:'13:05' },
-      { key:'2026-07-22', time:'11:50' },
-    ],
-  },
-  {
-    id:'req-10', name:'이수아', dob:'2001-11-29', phone:'010-3361-9802', pid:'P-022',
-    submittedAt:'2026-07-07 18:40', status:'confirmed',
-    sessions:[
-      { key:'2026-07-12', time:'13:55' },
-      { key:'2026-07-15', time:'11:50' },
-      { key:'2026-07-17', time:'16:50' },
-    ],
-  },
-];
 
 // ── StatusPill ────────────────────────────────────────────────────────────────
 function StatusPill({ C, status }) {
@@ -390,56 +360,25 @@ function SessionsBlock({ C, current, patchCurrent }) {
   );
 }
 
-// ── LocalStorage helpers ──────────────────────────────────────────────────────
-const SUBMISSIONS_KEY = 'pepper-submissions';
-const INBOX_KEY       = 'pepper-inbox';
-const DELETED_KEY     = 'pepper-deleted-ids';
+// ── Sheets API ────────────────────────────────────────────────────────────────
+const SCRIPT_URL = 'PASTE_YOUR_SCRIPT_URL_HERE';
 
-function loadDeletedIds() {
-  try { return new Set(JSON.parse(localStorage.getItem(DELETED_KEY) || '[]')); }
-  catch(e) { return new Set(); }
-}
-function persistDeletedIds(ids) {
-  try { localStorage.setItem(DELETED_KEY, JSON.stringify([...ids])); } catch(e) {}
-}
-
-function loadInbox() {
+async function apiGet() {
   try {
-    const real      = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
-    const deleted   = loadDeletedIds();
-    const saved     = localStorage.getItem(INBOX_KEY);
-    if (saved) {
-      const inboxReqs = JSON.parse(saved);
-      const existingIds = new Set(inboxReqs.map((r) => r.id));
-      const newReal = real.filter((r) => !existingIds.has(r.id) && !deleted.has(r.id));
-      return [...newReal, ...inboxReqs];
-    }
-    const mockIds = new Set(MOCK_REQUESTS.map((r) => r.id));
-    const newReal = real.filter((r) => !mockIds.has(r.id) && !deleted.has(r.id));
-    return [...newReal, ...MOCK_REQUESTS];
-  } catch(e) {
-    return MOCK_REQUESTS;
-  }
+    const res = await fetch(`${SCRIPT_URL}?t=${Date.now()}`);
+    return await res.json();
+  } catch(e) { return null; }
 }
 
-function persistInbox(reqs) {
-  try { localStorage.setItem(INBOX_KEY, JSON.stringify(reqs)); } catch(e) {}
+async function apiPost(data) {
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data),
+    });
+  } catch(e) {}
 }
-
-const AVAILABILITY_KEY   = 'pepper-availability';
-const OPENED_KEY         = 'pepper-opened-slots';
-const DELETED_ITEMS_KEY  = 'pepper-deleted-items';
-const CUSTOM_KEY         = 'pepper-custom-slots';
-
-function loadClosedSlots()  { try { return JSON.parse(localStorage.getItem(AVAILABILITY_KEY)  || '[]'); } catch(e) { return []; } }
-function loadOpenedSlots()  { try { return JSON.parse(localStorage.getItem(OPENED_KEY)         || '[]'); } catch(e) { return []; } }
-function loadDeletedItems() { try { return JSON.parse(localStorage.getItem(DELETED_ITEMS_KEY)  || '[]'); } catch(e) { return []; } }
-function loadCustomSlots()  { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)          || '[]'); } catch(e) { return []; } }
-
-function persistClosedSlots(slots)  { try { localStorage.setItem(AVAILABILITY_KEY,  JSON.stringify(slots)); } catch(e) {} }
-function persistOpenedSlots(slots)  { try { localStorage.setItem(OPENED_KEY,         JSON.stringify(slots)); } catch(e) {} }
-function persistDeletedItems(items) { try { localStorage.setItem(DELETED_ITEMS_KEY,  JSON.stringify(items)); } catch(e) {} }
-function persistCustomSlots(slots)  { try { localStorage.setItem(CUSTOM_KEY,          JSON.stringify(slots)); } catch(e) {} }
 
 // ── TabNav ────────────────────────────────────────────────────────────────────
 function TabNav({ C, view, setView }) {
@@ -637,95 +576,107 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpe
 // ── ResearcherInbox ───────────────────────────────────────────────────────────
 function ResearcherInbox() {
   const C = PALETTES.blush;
-  const [reqs,   setReqsRaw] = React.useState(loadInbox);
-  const [active, setActive]  = React.useState(() => loadInbox()[0]?.id);
 
-  // Persist every change and keep active pointing at a valid entry
-  const setReqs = (next) => {
-    setReqsRaw((prev) => {
-      const arr = typeof next === 'function' ? next(prev) : next;
-      persistInbox(arr);
-      return arr;
-    });
-  };
+  // ── All hooks first ──────────────────────────────────────────────────────────
+  const [reqs,         setReqsRaw]      = React.useState([]);
+  const [active,       setActive]       = React.useState(null);
+  const [loading,      setLoading]      = React.useState(true);
+  const [view,         setView]         = React.useState('inbox');
+  const [showDeleted,  setShowDeleted]  = React.useState(false);
+  const [deletedItems, setDeletedItems] = React.useState([]);
+  const [closedSlots,  setClosedSlotsRaw] = React.useState([]);
+  const [openedSlots,  setOpenedSlotsRaw] = React.useState([]);
+  const [customSlots,  setCustomSlotsRaw] = React.useState([]);
 
-  // Poll every 3 s for new participant submissions
+  // ── Initial load from Sheets ─────────────────────────────────────────────────
   React.useEffect(() => {
-    const check = () => {
-      try {
-        const real    = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
-        const deleted = loadDeletedIds();
-        setReqsRaw((prev) => {
-          const existingIds = new Set(prev.map((r) => r.id));
-          const newOnes = real.filter((r) => !existingIds.has(r.id) && !deleted.has(r.id));
-          if (newOnes.length === 0) return prev;
-          const merged = [...newOnes, ...prev];
-          persistInbox(merged);
-          return merged;
-        });
-      } catch(e) {}
+    apiGet().then(data => {
+      if (data && !data.error) {
+        const live = (data.submissions || []).filter(s => !s.deleted);
+        const gone = (data.submissions || []).filter(s => s.deleted);
+        setReqsRaw(live);
+        setDeletedItems(gone);
+        setActive(live[0]?.id ?? null);
+        setClosedSlotsRaw(data.config?.closedSlots || []);
+        setOpenedSlotsRaw(data.config?.openedSlots || []);
+        setCustomSlotsRaw(data.config?.customSlots || []);
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  // ── Poll every 8 s for new participant submissions ───────────────────────────
+  React.useEffect(() => {
+    const poll = async () => {
+      const data = await apiGet();
+      if (!data || data.error) return;
+      const serverLive = (data.submissions || []).filter(s => !s.deleted);
+      const serverGone = (data.submissions || []).filter(s => s.deleted);
+      setReqsRaw(prev => {
+        const prevMap = new Map(prev.map(r => [r.id, r]));
+        return serverLive.map(s => prevMap.get(s.id) || s);
+      });
+      setDeletedItems(serverGone);
     };
-    const id = setInterval(check, 3000);
+    const id = setInterval(poll, 8000);
     return () => clearInterval(id);
   }, []);
 
   React.useEffect(() => {
-    if (!reqs.find((r) => r.id === active)) setActive(reqs[0]?.id);
+    if (!reqs.find((r) => r.id === active)) setActive(reqs[0]?.id ?? null);
   }, [reqs, active]);
 
   const current = reqs.find((r) => r.id === active) || reqs[0];
 
-  const setStatus     = (id, status) => setReqs((prev) => prev.map((r) => r.id===id ? { ...r, status } : r));
-  const patchCurrent  = (patch)      => setReqs((prev) => prev.map((r) => r.id===active ? { ...r, ...patch } : r));
+  // ── Mutations (optimistic UI + background POST to Sheets) ────────────────────
+  const setStatus = (id, status) => {
+    setReqsRaw(prev => prev.map(r => r.id===id ? { ...r, status } : r));
+    apiPost({ action: 'update', id, field: 'status', value: status });
+  };
+  const patchCurrent = (patch) => {
+    setReqsRaw(prev => prev.map(r => r.id===active ? { ...r, ...patch } : r));
+    Object.entries(patch).forEach(([field, value]) =>
+      apiPost({ action: 'update', id: active, field, value: Array.isArray(value) ? JSON.stringify(value) : value })
+    );
+  };
   const deleteCurrent = () => {
-    setReqsRaw((prev) => {
-      const item = prev.find((r) => r.id === active);
-      if (item) {
-        const items = loadDeletedItems();
-        persistDeletedItems([item, ...items]);
-        setDeletedItems((di) => [item, ...di]);
-      }
-      const ids = loadDeletedIds();
-      ids.add(active);
-      persistDeletedIds(ids);
-      const next = prev.filter((r) => r.id !== active);
-      persistInbox(next);
-      return next;
+    const tid = active;
+    setReqsRaw(prev => {
+      const item = prev.find(r => r.id === tid);
+      if (item) setDeletedItems(di => [item, ...di]);
+      return prev.filter(r => r.id !== tid);
     });
+    apiPost({ action: 'delete', id: tid });
   };
-
   const restoreItem = (item) => {
-    const ids = loadDeletedIds(); ids.delete(item.id); persistDeletedIds(ids);
-    const items = loadDeletedItems().filter((i) => i.id !== item.id);
-    persistDeletedItems(items);
-    setDeletedItems(items);
-    setReqs((prev) => [item, ...prev]);
+    setDeletedItems(prev => prev.filter(i => i.id !== item.id));
+    setReqsRaw(prev => [item, ...prev]);
     setActive(item.id);
+    apiPost({ action: 'restore', id: item.id });
   };
 
-  const [view, setView]             = React.useState('inbox');
-  const [showDeleted, setShowDeleted] = React.useState(false);
-  const [deletedItems, setDeletedItems] = React.useState(loadDeletedItems);
-
-  const [closedSlots, setClosedSlotsRaw] = React.useState(loadClosedSlots);
-  const setClosedSlots = (slots) => { setClosedSlotsRaw(slots); persistClosedSlots(slots); };
-  const toggleSlot = (k) => setClosedSlots(
-    closedSlots.includes(k) ? closedSlots.filter((s) => s !== k) : [...closedSlots, k]
-  );
-
-  const [openedSlots, setOpenedSlotsRaw] = React.useState(loadOpenedSlots);
-  const setOpenedSlots = (slots) => { setOpenedSlotsRaw(slots); persistOpenedSlots(slots); };
-  const toggleOpenSlot = (k) => setOpenedSlots(
-    openedSlots.includes(k) ? openedSlots.filter((s) => s !== k) : [...openedSlots, k]
-  );
-
-  const [customSlots, setCustomSlotsRaw] = React.useState(loadCustomSlots);
-  const setCustomSlots = (slots) => { setCustomSlotsRaw(slots); persistCustomSlots(slots); };
-  const addCustomSlot    = (slot) => {
-    if (!customSlots.find((s) => s.key === slot.key && s.time === slot.time))
-      setCustomSlots([...customSlots, slot]);
+  // ── Slot config mutations ────────────────────────────────────────────────────
+  const toggleSlot = (k) => {
+    const next = closedSlots.includes(k) ? closedSlots.filter(s => s !== k) : [...closedSlots, k];
+    setClosedSlotsRaw(next);
+    apiPost({ action: 'setConfig', config: { closedSlots: next, openedSlots, customSlots } });
   };
-  const removeCustomSlot = (key, time) => setCustomSlots(customSlots.filter((s) => !(s.key === key && s.time === time)));
+  const toggleOpenSlot = (k) => {
+    const next = openedSlots.includes(k) ? openedSlots.filter(s => s !== k) : [...openedSlots, k];
+    setOpenedSlotsRaw(next);
+    apiPost({ action: 'setConfig', config: { closedSlots, openedSlots: next, customSlots } });
+  };
+  const addCustomSlot = (slot) => {
+    if (customSlots.find(s => s.key === slot.key && s.time === slot.time)) return;
+    const next = [...customSlots, slot];
+    setCustomSlotsRaw(next);
+    apiPost({ action: 'setConfig', config: { closedSlots, openedSlots, customSlots: next } });
+  };
+  const removeCustomSlot = (key, time) => {
+    const next = customSlots.filter(s => !(s.key === key && s.time === time));
+    setCustomSlotsRaw(next);
+    apiPost({ action: 'setConfig', config: { closedSlots, openedSlots, customSlots: next } });
+  };
 
   const frame = {
     width:1200, height:820, background:C.bg, color:C.ink,
@@ -734,6 +685,14 @@ function ResearcherInbox() {
     borderRadius:12, overflow:'hidden',
     boxShadow:'0 1px 0 rgba(0,0,0,0.04), 0 24px 60px -30px rgba(0,0,0,0.18)',
   };
+
+  if (loading) return (
+    <div style={frame}>
+      <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:C.muted, fontSize:14 }}>
+        데이터를 불러오는 중…
+      </div>
+    </div>
+  );
 
   return (
     <div style={frame}>

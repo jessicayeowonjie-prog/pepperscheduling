@@ -116,46 +116,29 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), cust
   return days;
 }
 
-function getSubmissionTakenSlots() {
+// ── Sheets API ────────────────────────────────────────────────────────────────
+const SCRIPT_URL = 'PASTE_YOUR_SCRIPT_URL_HERE';
+
+async function apiGet() {
   try {
-    const subs = JSON.parse(localStorage.getItem('pepper-submissions') || '[]');
-    const taken = new Set();
-    subs.forEach((sub) => {
-      (sub.sessions || []).forEach((s) => taken.add(`${s.key}_${s.time}`));
+    const res = await fetch(`${SCRIPT_URL}?t=${Date.now()}`);
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+async function apiPost(data) {
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data),
     });
-    return taken;
-  } catch(e) {
-    return new Set();
-  }
+  } catch(e) {}
 }
 
-function getResearcherClosedSlots() {
-  try {
-    const closed = JSON.parse(localStorage.getItem('pepper-availability') || '[]');
-    return new Set(closed);
-  } catch(e) {
-    return new Set();
-  }
-}
-
-function getResearcherOpenedSlots() {
-  try { return new Set(JSON.parse(localStorage.getItem('pepper-opened-slots') || '[]')); }
-  catch(e) { return new Set(); }
-}
-
-function getResearcherCustomSlots() {
-  try { return JSON.parse(localStorage.getItem('pepper-custom-slots') || '[]'); }
-  catch(e) { return []; }
-}
-
-function combinedTakenSlots() {
-  const taken = getSubmissionTakenSlots();
-  getResearcherClosedSlots().forEach((k) => taken.add(k));
-  return taken;
-}
-
-const AVAILABILITY = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots(), getResearcherCustomSlots());
-const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
+// Static day lookup — used only for date/title formatting (dates never change)
+const BASE_DAYS = buildAvailability(new Set(), new Set(), []);
+const dayByKey  = (k) => BASE_DAYS.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
 const primaryBtn = (C) => ({
@@ -449,21 +432,30 @@ function InfoH({ C, children }) {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
-function Sessions({ C, selected, setSelected, onBack, onNext, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
-  const [avail, setAvail] = React.useState(availability);
+function Sessions({ C, selected, setSelected, onBack, onNext }) {
+  const [avail, setAvail] = React.useState(() => buildAvailability(new Set(), new Set(), []));
+  const lookupDay = dayByKey;
 
-  // Refresh taken slots from submissions every 5 s; also deselect any slot that got taken
   React.useEffect(() => {
-    const refresh = () => {
-      const built = buildAvailability(combinedTakenSlots(), getResearcherOpenedSlots(), getResearcherCustomSlots());
+    const refresh = async () => {
+      const data = await apiGet();
+      if (!data) return;
+      const taken = new Set();
+      (data.submissions || []).filter(s => !s.deleted).forEach(sub =>
+        (sub.sessions || []).forEach(s => taken.add(`${s.key}_${s.time}`))
+      );
+      const cfg = data.config || {};
+      (cfg.closedSlots || []).forEach(k => taken.add(k));
+      const built = buildAvailability(taken, new Set(cfg.openedSlots || []), cfg.customSlots || []);
       setAvail(built);
-      setSelected((prev) => prev.filter((s) => {
-        const day  = built.find((d) => d.key === s.key);
-        const slot = day && day.slots.find((sl) => sl.time === s.time);
+      setSelected(prev => prev.filter(s => {
+        const day  = built.find(d => d.key === s.key);
+        const slot = day && day.slots.find(sl => sl.time === s.time);
         return !slot || !slot.taken;
       }));
     };
-    const id = setInterval(refresh, 5000);
+    refresh();
+    const id = setInterval(refresh, 10000);
     return () => clearInterval(id);
   }, []);
 
@@ -556,9 +548,9 @@ function SelectionPills({ C, selected, onRemove }) {
 }
 
 // ── Month + slot drawer ───────────────────────────────────────────────────────
-function MonthDrawer({ C, selected, toggle, availability = AVAILABILITY, dayByKey: lookupDay = dayByKey }) {
-  const [focus, setFocus] = React.useState(availability[0].key);
-  const day = lookupDay(focus);
+function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay }) {
+  const [focus, setFocus] = React.useState((availability || BASE_DAYS)[0].key);
+  const day = (availability || BASE_DAYS).find(d => d.key === focus) || lookupDay(focus);
   const monthStart = startOfMonth(TODAY);
   const firstDow   = monthStart.getDay();
   const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
@@ -586,7 +578,7 @@ function MonthDrawer({ C, selected, toggle, availability = AVAILABILITY, dayByKe
           {Array.from({ length: daysInMonth }).map((_,i) => {
             const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), i+1);
             const key  = ymd(date);
-            const av   = lookupDay(key);
+            const av   = (availability || BASE_DAYS).find(d => d.key === key);
             const free = av && av.slots.some((s) => !s.taken);
             const isFocus = key === focus;
             const selCount = selected.filter((s) => s.key === key).length;
@@ -845,14 +837,8 @@ function Confirm({ C, form, selected, onReset }) {
   );
 }
 
-// ── LocalStorage helpers ──────────────────────────────────────────────────────
-const SUBMISSIONS_KEY = 'pepper-submissions';
-
 function saveSubmission(submission) {
-  try {
-    const existing = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]');
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([submission, ...existing]));
-  } catch(e) {}
+  apiPost({ action: 'submit', submission });
 }
 
 // ── BookingApp ────────────────────────────────────────────────────────────────
