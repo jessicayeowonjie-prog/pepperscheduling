@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Pepper Study · 일정 예약</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Inter', 'Noto Sans KR', system-ui, sans-serif;
+    background: #fbf7f4;
+    color: #2b2422;
+    -webkit-font-smoothing: antialiased;
+  }
+  #root { min-height: 100svh; }
+  /* Prevent iOS zoom on inputs */
+  input, select, textarea { font-size: 16px; font-family: inherit; }
+  /* Hide scrollbars globally but keep scrolling */
+  * { -ms-overflow-style: none; scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+// ── Palette ───────────────────────────────────────────────────────────────────
+const C = {
+  bg:'#fbf7f4', surface:'#fffdfb', ink:'#2b2422', muted:'#7e7068',
+  line:'#ede2db', a:'#f2d4cf', b:'#cdd6e8', c:'#e9dccb', accent:'#a4625a',
+};
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+const KO_DAYS = ['일','월','화','수','목','금','토'];
+const addDays  = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+const ymd      = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const fmtTime  = (h, m) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+const fmtKoDate = (d) => `${d.getMonth()+1}월 ${d.getDate()}일 (${KO_DAYS[d.getDay()]})`;
+function addMin(t, n) {
+  const [h, m] = t.split(':').map(Number);
+  const tot = h*60 + m + n;
+  return fmtTime(Math.floor(tot/60), tot%60);
+}
+
+const TODAY = new Date(2026, 6, 12);
+const DAY_HOURS = {
+  '2026-07-12':[13,21],'2026-07-13':[9,21],'2026-07-14':[9,21],
+  '2026-07-15':[9,21],'2026-07-16':[9,21],'2026-07-17':[9,21],
+  '2026-07-18':[9,21],'2026-07-19':[13,21],'2026-07-20':[9,21],
+  '2026-07-21':[9,21],'2026-07-22':[9,21],'2026-07-23':[9,21],
+  '2026-07-24':[9,21],'2026-07-25':[9,21],
+};
+
+function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), customSlots = []) {
+  const taken = new Set([
+    '2026-07-13_10:00','2026-07-13_14:50',
+    '2026-07-14_11:50','2026-07-14_16:50',
+    '2026-07-15_09:55','2026-07-15_15:55',
+    '2026-07-16_13:05','2026-07-17_10:50','2026-07-17_19:30',
+    '2026-07-20_09:00','2026-07-20_14:00',
+    '2026-07-21_11:50','2026-07-22_15:55',
+    '2026-07-23_10:00','2026-07-23_18:25',
+    '2026-07-24_13:05',
+  ]);
+  extraTaken.forEach(t => taken.add(t));
+  openedSlots.forEach(k => taken.delete(k));
+  const days = [];
+  for (let i = 0; i < 14; i++) {
+    const d   = addDays(TODAY, i);
+    const key = ymd(d);
+    const hrs = DAY_HOURS[key];
+    const slots = [];
+    if (hrs) {
+      const [startHour, endHour] = hrs;
+      let h = startHour, m = 0;
+      while (h * 60 + m + 40 <= endHour * 60) {
+        const t = fmtTime(h, m);
+        slots.push({ time: t, taken: taken.has(`${key}_${t}`) });
+        m += 55;
+        while (m >= 60) { m -= 60; h++; }
+      }
+    }
+    (customSlots || []).filter(s => s.key === key).forEach(s => {
+      if (!slots.find(sl => sl.time === s.time))
+        slots.push({ time: s.time, taken: taken.has(`${key}_${s.time}`) });
+    });
+    slots.sort((a, b) => a.time.localeCompare(b.time));
+    days.push({ date: d, key, slots });
+  }
+  return days;
+}
+
+// ── Sheets API ────────────────────────────────────────────────────────────────
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXdMr1XaCuQx-1__vtkTg3cExBkBApYNCXkFP_mExkqOeE-TCS-odbqrTuWB_-vaea/exec';
+
+async function apiGet() {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?t=${Date.now()}`);
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+async function apiPost(data) {
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data),
+    });
+  } catch(e) {}
+}
+
+// ── Shared style helpers ───────────────────────────────────────────────────────
+const btn = (extra = {}) => ({
+  fontFamily:'inherit', cursor:'pointer', border:'none',
+  display:'inline-flex', alignItems:'center', justifyContent:'center',
+  ...extra,
+});
+
+const primaryBtn = {
+  background: C.ink, color: C.surface, borderRadius: 999,
+  padding: '14px 28px', fontSize: 15, fontWeight: 500,
+  width: '100%', fontFamily: 'inherit', cursor: 'pointer', border: 'none',
+};
+
+// ── ProgressBar ───────────────────────────────────────────────────────────────
+function ProgressBar({ step }) {
+  const steps = ['intro','info','sessions','details','confirm'];
+  const idx = steps.indexOf(step);
+  const pct = idx / (steps.length - 1) * 100;
+  return (
+    <div style={{ height: 3, background: C.line, borderRadius: 2, margin: '0 20px' }}>
+      <div style={{
+        height: 3, borderRadius: 2, background: C.ink,
+        width: `${pct}%`, transition: 'width 300ms ease',
+      }} />
+    </div>
+  );
+}
+
+// ── TopBar ────────────────────────────────────────────────────────────────────
+function TopBar({ step, onBack }) {
+  const labels = { intro:'소개', info:'연구 설명', sessions:'세션 선택', details:'참여자 정보', confirm:'신청 완료' };
+  return (
+    <div style={{ background: C.surface, borderBottom: `1px solid ${C.line}`, position:'sticky', top:0, zIndex:10 }}>
+      <div style={{ display:'flex', alignItems:'center', padding:'12px 16px', gap:10 }}>
+        {step !== 'intro' && step !== 'confirm' && (
+          <button onClick={onBack} style={{
+            ...btn(), background:'transparent', padding:'6px', borderRadius:8,
+            color: C.muted, fontSize:18, lineHeight:1, flexShrink:0,
+          }}>←</button>
+        )}
+        <div style={{ display:'flex', alignItems:'center', gap:10, flex:1 }}>
+          <div style={{
+            width:26, height:26, borderRadius:6, flexShrink:0,
+            background:`linear-gradient(135deg, ${C.a}, ${C.b})`,
+            border:`1px solid ${C.line}`,
+          }} />
+          <div>
+            <div style={{ fontSize:13, fontWeight:500 }}>Pepper Study</div>
+            <div style={{ fontSize:11, color:C.muted }}>{labels[step]}</div>
+          </div>
+        </div>
+      </div>
+      <ProgressBar step={step} />
+    </div>
+  );
+}
+
+// ── Intro ─────────────────────────────────────────────────────────────────────
+function Intro({ onNext }) {
+  return (
+    <div style={{ padding:'28px 20px 100px' }}>
+      <div style={{ fontSize:11, letterSpacing:1.2, color:C.muted, textTransform:'uppercase', marginBottom:14 }}>
+        Pepper · 인간–로봇 상호작용 연구
+      </div>
+      <h1 style={{ fontSize:28, fontWeight:500, lineHeight:1.25, letterSpacing:-0.3, margin:'0 0 16px' }}>
+        안녕하세요,<br />소셜 로봇 페퍼<br />연구팀입니다.
+      </h1>
+      <p style={{ fontSize:14, lineHeight:1.75, color:C.ink, opacity:0.84, margin:'0 0 24px' }}>
+        이 연구는 사람들이 소셜 로봇 페퍼(Pepper)와 반복적으로 대화할 때 자신의 생각을 어떻게 소통하는지,
+        그리고 로봇의 설계가 그러한 소통 방식 및 관계적 결과에 어떠한 영향을 미치는지 알아보고자 설계된 실험 연구입니다.
+      </p>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:32 }}>
+        {[['세션 수','3회','각 40분'],['기간','2주 이내','최소 1일 간격'],['장소','실험실 대면','세부사항 안내']].map(([k,v,sub]) => (
+          <div key={k} style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 10px' }}>
+            <div style={{ fontSize:10, color:C.muted, marginBottom:6 }}>{k}</div>
+            <div style={{ fontSize:16, fontWeight:500 }}>{v}</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      <button onClick={onNext} style={primaryBtn}>연구 설명 보기 →</button>
+      <div style={{ textAlign:'center', marginTop:12, fontSize:12, color:C.muted }}>전체 약 3분 소요</div>
+    </div>
+  );
+}
+
+// ── StudyInfo ─────────────────────────────────────────────────────────────────
+function StudyInfo({ readInfo, setReadInfo, onNext }) {
+  const scrollRef = React.useRef(null);
+  const [atBottom, setAtBottom] = React.useState(false);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 32) {
+      setAtBottom(true);
+      setReadInfo(true);
+    }
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'calc(100svh - 65px)' }}>
+      <div style={{ padding:'20px 20px 12px', flexShrink:0 }}>
+        <div style={{ fontSize:11, letterSpacing:1.2, color:C.muted, textTransform:'uppercase', marginBottom:8 }}>Step 2 · 사전 안내</div>
+        <h2 style={{ fontSize:22, fontWeight:500, letterSpacing:-0.2 }}>연구참여설명서</h2>
+        <p style={{ fontSize:12, color:C.muted, marginTop:4 }}>예약 전, 아래 내용을 충분히 읽어주시기 바랍니다.</p>
+      </div>
+
+      <div ref={scrollRef} onScroll={onScroll} style={{
+        flex:1, overflowY:'auto', padding:'0 20px',
+        fontSize:14, lineHeight:1.8, color:C.ink,
+      }}>
+        <p style={{ marginBottom:14 }}>
+          본 연구의 목적은 사람들이 소셜 로봇 페퍼(Pepper)와 반복적으로 대화할 때 자신의 소통 방식을 로봇에 맞게
+          조율하는 행동을 보이는지, 그리고 로봇의 설계가 그러한 조율 행동 및 관계적 결과에 어떠한 영향을 미치는지
+          이해하는 것입니다.
+        </p>
+
+        <h3 style={{ fontSize:14, fontWeight:500, margin:'0 0 8px' }}>1) 연구참여대상 및 연구대상자 수</h3>
+        <p style={{ marginBottom:16 }}>
+          본 연구는 만 18세 이상 남녀로서 3번의 세션에 걸쳐 소셜 로봇과 약 10분 정도 대화하는 것이 가능한 사람들이
+          참여할 수 있습니다. 연구 참여는 자발적이며, 대략 <strong style={{ fontWeight:500 }}>55명</strong>의 실험 참여자를 모집할 계획입니다.
+        </p>
+
+        <h3 style={{ fontSize:14, fontWeight:500, margin:'0 0 8px' }}>2) 연구참여기간</h3>
+        <p style={{ marginBottom:16 }}>
+          이 연구는 <strong style={{ fontWeight:500 }}>2026년 6월 초부터 12월 초순까지</strong> 진행될 예정입니다.
+          단 한 번의 실험에 참여하는 시간은 약 <strong style={{ fontWeight:500 }}>30분에서 50분 정도</strong>일 것으로 예상됩니다.
+        </p>
+
+        <h3 style={{ fontSize:14, fontWeight:500, margin:'0 0 8px' }}>3) 연구 진행 과정</h3>
+        <p style={{ marginBottom:12 }}>
+          이 실험은 <strong style={{ fontWeight:500 }}>1~2주에 걸쳐 총 세 차례의 세션</strong>으로 구성되어 있습니다.
+        </p>
+        <ul style={{ margin:'0 0 18px', paddingLeft:18, listStyle:'disc' }}>
+          {[
+            ['정보 제공 및 동의 (약 3분)','실험 시작 전 연구 참여 설명서를 검토하시고, 참여 동의서에 서명하시게 됩니다.'],
+            ['사전 설문 (약 5분)','기본적인 인구통계학적 질문과 함께 로봇에 대한 사전 태도에 관한 설문에 응답하시게 됩니다. 첫 번째 세션에서만 진행됩니다.'],
+            ['소셜 로봇 페퍼(Pepper)와의 대화 세션 (세션당 약 5~10분)','페퍼와 1:1로 대화를 나누시게 됩니다. 각 세션은 약 1주일 간격으로 진행됩니다.'],
+            ['반구조화 인터뷰 (약 30분, 마지막 세션에만 진행)','세 번째 세션이 끝난 후 연구원과의 인터뷰가 진행됩니다.'],
+            ['마무리 및 보상 지급 (약 3~5분)','모든 세션이 종료된 후 참여 보상(5만원 상당)이 지급됩니다.'],
+          ].map(([title, desc]) => (
+            <li key={title} style={{ marginBottom:12 }}>
+              <strong style={{ fontWeight:500 }}>{title}</strong><br />
+              <span style={{ color:C.muted, fontSize:13 }}>{desc}</span>
+            </li>
+          ))}
+        </ul>
+
+        <h3 style={{ fontSize:14, fontWeight:500, margin:'0 0 8px' }}>4) 개인정보 및 자료 처리</h3>
+        <p style={{ marginBottom:12 }}>
+          대화 세션 및 인터뷰는 연구 목적의 기록 및 분석을 위해 녹음·녹화될 수 있으며, 수집된 모든 자료는 무기명으로
+          처리되어 연구 이외의 목적으로 사용되지 않습니다.
+        </p>
+        <p style={{ marginBottom:18 }}>
+          참여 보상 지급을 위해 성명, 전화번호, 은행 계좌번호, 신분증 정보가 수집될 수 있으며,
+          관련 법규에 따라 안전하게 관리된 후 연구 종료 시 폐기됩니다.
+        </p>
+
+        <div style={{ fontSize:12, color:C.muted, lineHeight:1.7, borderTop:`1px dashed ${C.line}`, paddingTop:14, marginBottom:24 }}>
+          책임 연구자 · 이선경 교수님 (sunnylee@korea.ac.kr)<br />
+          연구 후원 기관 · 고려대학교, 한국연구재단<br />
+          실험 관련 문의 · 지여원 조교 (jessi2001@korea.ac.kr)
+        </div>
+
+        {!atBottom && (
+          <button onClick={() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior:'smooth' }); }}
+            style={{ ...btn(), background:C.ink, color:C.surface, borderRadius:999, padding:'10px 20px', fontSize:13, width:'100%', marginBottom:20 }}>
+            끝까지 읽기 ↓
+          </button>
+        )}
+      </div>
+
+      <div style={{ padding:'12px 20px', borderTop:`1px solid ${C.line}`, background:C.bg, flexShrink:0,
+        paddingBottom:`calc(12px + env(safe-area-inset-bottom))` }}>
+        <label style={{
+          display:'flex', gap:12, alignItems:'flex-start',
+          border:`1px solid ${readInfo ? C.ink : C.line}`, borderRadius:10,
+          padding:'12px 14px', background:C.surface, cursor:'pointer', marginBottom:12,
+          transition:'border-color 160ms',
+        }}>
+          <input type="checkbox" checked={readInfo} onChange={e => setReadInfo(e.target.checked)}
+                 style={{ marginTop:2, accentColor:C.ink, width:18, height:18, flexShrink:0 }} />
+          <span style={{ fontSize:13, color:C.ink, lineHeight:1.5 }}>
+            위 연구참여설명서를 충분히 읽고 이해하였으며, 다음 단계로 진행하는 데 동의합니다.
+          </span>
+        </label>
+        <button onClick={onNext} disabled={!readInfo} style={{
+          ...primaryBtn, opacity: readInfo ? 1 : 0.35, cursor: readInfo ? 'pointer' : 'not-allowed',
+        }}>세션 선택하기 →</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+function Sessions({ selected, setSelected, onNext }) {
+  const [avail, setAvail] = React.useState(() => buildAvailability(new Set(), new Set(), []));
+  const [focus, setFocus] = React.useState(null);
+  const stripRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const refresh = async () => {
+      const data = await apiGet();
+      if (!data) return;
+      const taken = new Set();
+      (data.submissions || []).filter(s => !s.deleted).forEach(sub =>
+        (sub.sessions || []).forEach(s => taken.add(`${s.key}_${s.time}`))
+      );
+      const cfg = data.config || {};
+      (cfg.closedSlots || []).forEach(k => taken.add(k));
+      const built = buildAvailability(taken, new Set(cfg.openedSlots || []), cfg.customSlots || []);
+      setAvail(built);
+      setSelected(prev => prev.filter(s => {
+        const day = built.find(d => d.key === s.key);
+        const slot = day && day.slots.find(sl => sl.time === s.time);
+        return !slot || !slot.taken;
+      }));
+    };
+    refresh();
+    const id = setInterval(refresh, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const availDays = avail.filter(d => d.slots.some(s => !s.taken));
+
+  React.useEffect(() => {
+    if (!focus && availDays.length) setFocus(availDays[0].key);
+  }, [avail]);
+
+  const focusDay = avail.find(d => d.key === focus);
+
+  const toggle = (key, time) => {
+    const day  = avail.find(d => d.key === key);
+    const slot = day && day.slots.find(s => s.time === time);
+    if (slot && slot.taken) return;
+    const exists = selected.find(s => s.key === key && s.time === time);
+    if (exists) { setSelected(selected.filter(s => !(s.key === key && s.time === time))); return; }
+    if (selected.length >= 3) return;
+    const d  = new Date(key);
+    const tooClose = selected.some(s => Math.abs((d - new Date(s.key)) / 86400000) < 1);
+    if (tooClose) return;
+    setSelected([...selected, { key, time }].sort((a, b) => (a.key+a.time).localeCompare(b.key+b.time)));
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'calc(100svh - 65px)' }}>
+      {/* Selected sessions summary */}
+      <div style={{ padding:'14px 20px 10px', flexShrink:0 }}>
+        <div style={{ fontSize:13, fontWeight:500, marginBottom:4 }}>세션 3회를 선택해 주세요</div>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
+          7월 12일 – 25일 · 각 세션은 최소 1일 간격
+        </div>
+        <div style={{ display:'flex', gap:6 }}>
+          {[0,1,2].map(i => {
+            const s = selected[i];
+            if (!s) return (
+              <div key={i} style={{
+                flex:1, padding:'8px 0', borderRadius:8, textAlign:'center',
+                border:`1px dashed ${C.line}`, color:C.muted, fontSize:11,
+              }}>세션 {i+1}</div>
+            );
+            const d = avail.find(day => day.key === s.key)?.date;
+            return (
+              <button key={i} onClick={() => toggle(s.key, s.time)} style={{
+                flex:1, padding:'7px 6px', borderRadius:8, textAlign:'center',
+                background: i===0 ? C.a : i===1 ? C.b : C.c,
+                border:'none', cursor:'pointer', fontFamily:'inherit',
+              }}>
+                <div style={{ fontSize:10, color:C.ink, fontWeight:500 }}>
+                  {d ? `${d.getMonth()+1}/${d.getDate()}` : s.key}
+                </div>
+                <div style={{ fontSize:10, color:C.ink, fontVariantNumeric:'tabular-nums' }}>{s.time}</div>
+                <div style={{ fontSize:9, color:C.muted, marginTop:1 }}>탭하여 취소</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Day strip */}
+      <div ref={stripRef} style={{
+        display:'flex', gap:6, overflowX:'auto', padding:'6px 20px 10px',
+        flexShrink:0, borderBottom:`1px solid ${C.line}`,
+      }}>
+        {avail.map(day => {
+          const freeCount = day.slots.filter(s => !s.taken).length;
+          const isFocus   = day.key === focus;
+          const selCount  = selected.filter(s => s.key === day.key).length;
+          return (
+            <button key={day.key} onClick={() => setFocus(day.key)} disabled={freeCount === 0} style={{
+              flexShrink:0, width:54, padding:'8px 4px', borderRadius:10, textAlign:'center',
+              border:`1px solid ${isFocus ? C.ink : C.line}`,
+              background: isFocus ? C.ink : selCount ? C.a : C.surface,
+              color: isFocus ? C.surface : freeCount === 0 ? C.muted : C.ink,
+              cursor: freeCount === 0 ? 'not-allowed' : 'pointer',
+              fontFamily:'inherit', opacity: freeCount === 0 ? 0.4 : 1,
+            }}>
+              <div style={{ fontSize:10, marginBottom:2 }}>{KO_DAYS[day.date.getDay()]}</div>
+              <div style={{ fontSize:16, fontWeight:500, lineHeight:1 }}>{day.date.getDate()}</div>
+              <div style={{ fontSize:9, marginTop:4, color: isFocus ? 'rgba(255,255,255,0.7)' : C.muted }}>
+                {freeCount > 0 ? `${freeCount}개` : '마감'}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Time slots */}
+      <div style={{ flex:1, overflowY:'auto', padding:'14px 20px 100px' }}>
+        {focusDay ? (
+          <>
+            <div style={{ fontSize:13, fontWeight:500, marginBottom:12, color:C.muted }}>
+              {focusDay.date.getMonth()+1}월 {focusDay.date.getDate()}일 ({KO_DAYS[focusDay.date.getDay()]}) · 가능한 시간
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+              {focusDay.slots.map(s => {
+                const isSel   = !!selected.find(x => x.key === focusDay.key && x.time === s.time);
+                const canAdd  = !s.taken && !isSel && selected.length < 3;
+                const tooClose = !s.taken && !isSel && selected.some(x => Math.abs((new Date(focusDay.key) - new Date(x.key)) / 86400000) < 1);
+                return (
+                  <button key={s.time} onClick={() => !s.taken && toggle(focusDay.key, s.time)}
+                    disabled={s.taken || tooClose} style={{
+                      padding:'12px 6px', borderRadius:10, fontFamily:'inherit', fontSize:13,
+                      fontVariantNumeric:'tabular-nums', textAlign:'center',
+                      border:`1px solid ${isSel ? 'transparent' : s.taken ? C.line : tooClose ? C.line : C.line}`,
+                      background: isSel ? C.ink : s.taken ? C.bg : tooClose ? C.bg : C.surface,
+                      color: isSel ? C.surface : s.taken ? C.muted : tooClose ? C.muted : C.ink,
+                      cursor: s.taken || tooClose ? 'not-allowed' : 'pointer',
+                      opacity: s.taken ? 0.4 : tooClose ? 0.35 : 1,
+                    }}>
+                    <div style={{ fontWeight: isSel ? 500 : 400 }}>{s.time}</div>
+                    {isSel && <div style={{ fontSize:9, marginTop:3, opacity:0.7 }}>선택됨</div>}
+                    {s.taken && <div style={{ fontSize:9, marginTop:3 }}>마감</div>}
+                  </button>
+                );
+              })}
+              {focusDay.slots.length === 0 && (
+                <div style={{ gridColumn:'1/-1', color:C.muted, fontSize:13, padding:'20px 0', textAlign:'center' }}>
+                  이 날에는 가능한 시간대가 없습니다.
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ color:C.muted, fontSize:13, textAlign:'center', paddingTop:32 }}>
+            날짜를 선택해 주세요.
+          </div>
+        )}
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{ position:'sticky', bottom:0, padding:'12px 20px', background:C.bg,
+        borderTop:`1px solid ${C.line}`, paddingBottom:`calc(12px + env(safe-area-inset-bottom))` }}>
+        {selected.length < 3 ? (
+          <div style={{ textAlign:'center', fontSize:13, color:C.muted, padding:'10px 0' }}>
+            {3 - selected.length}개의 세션을 더 선택해 주세요
+          </div>
+        ) : (
+          <button onClick={onNext} style={primaryBtn}>참여자 정보 입력 →</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Details ───────────────────────────────────────────────────────────────────
+function Details({ form, setForm, selected, avail, onNext }) {
+  const valid = form.name.trim() && form.dob && form.phone.trim() && form.consent;
+  const upd   = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const inputStyle = {
+    width:'100%', background:C.surface, border:`1px solid ${C.line}`,
+    borderRadius:10, padding:'13px 14px', fontSize:16, color:C.ink,
+    fontFamily:'inherit', outline:'none',
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', minHeight:'calc(100svh - 65px)' }}>
+      <div style={{ flex:1, padding:'20px 20px 20px', overflowY:'auto' }}>
+        <h2 style={{ fontSize:22, fontWeight:500, marginBottom:6, letterSpacing:-0.2 }}>참여자 정보</h2>
+        <p style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.5 }}>
+          연구팀이 일정 확정과 사전 안내를 위해 사용합니다. 정보는 연구 목적 외에는 사용되지 않습니다.
+        </p>
+
+        {/* Session summary */}
+        <div style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 16px', marginBottom:20 }}>
+          <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase', marginBottom:10 }}>선택한 세션</div>
+          {selected.map((s, i) => {
+            const d = avail.find(day => day.key === s.key)?.date;
+            return (
+              <div key={i} style={{
+                display:'flex', justifyContent:'space-between', alignItems:'center',
+                padding:'8px 0', borderTop: i > 0 ? `1px solid ${C.line}` : 'none',
+              }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{
+                    width:20, height:20, borderRadius:10,
+                    background: i===0 ? C.a : i===1 ? C.b : C.c,
+                    display:'inline-flex', alignItems:'center', justifyContent:'center',
+                    fontSize:10, fontWeight:500, flexShrink:0,
+                  }}>{i+1}</span>
+                  <span style={{ fontSize:13, fontVariantNumeric:'tabular-nums' }}>
+                    {d ? fmtKoDate(d) : s.key}
+                  </span>
+                </div>
+                <span style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                  {s.time} – {addMin(s.time,40)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Form fields */}
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <label style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <span style={{ fontSize:12, color:C.muted }}>이름</span>
+            <input value={form.name} onChange={upd('name')} placeholder="홍길동" style={inputStyle}
+              onFocus={e => e.target.style.borderColor = C.ink}
+              onBlur={e => e.target.style.borderColor = C.line} />
+          </label>
+          <label style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <span style={{ fontSize:12, color:C.muted }}>생년월일</span>
+            <input type="date" value={form.dob} onChange={upd('dob')} style={inputStyle}
+              onFocus={e => e.target.style.borderColor = C.ink}
+              onBlur={e => e.target.style.borderColor = C.line} />
+          </label>
+          <label style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <span style={{ fontSize:12, color:C.muted }}>휴대전화</span>
+            <input type="tel" value={form.phone} onChange={upd('phone')} placeholder="010-0000-0000" style={inputStyle}
+              onFocus={e => e.target.style.borderColor = C.ink}
+              onBlur={e => e.target.style.borderColor = C.line} />
+          </label>
+          <label style={{
+            display:'flex', gap:12, alignItems:'flex-start',
+            border:`1px solid ${form.consent ? C.ink : C.line}`, borderRadius:10,
+            padding:'14px', background:C.surface, cursor:'pointer',
+            transition:'border-color 160ms',
+          }}>
+            <input type="checkbox" checked={form.consent}
+                   onChange={e => setForm({ ...form, consent: e.target.checked })}
+                   style={{ marginTop:2, accentColor:C.ink, width:18, height:18, flexShrink:0 }} />
+            <div style={{ fontSize:13, lineHeight:1.55, color:C.ink }}>
+              <div style={{ marginBottom:3, fontWeight:500 }}>연구 참여 동의</div>
+              <div style={{ color:C.muted, fontSize:12 }}>
+                본 연구의 절차·녹음/녹화·개인정보 처리방침을 확인하였으며, 자발적으로 참여에 동의합니다.
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div style={{ padding:'12px 20px', borderTop:`1px solid ${C.line}`, background:C.bg, flexShrink:0,
+        paddingBottom:`calc(12px + env(safe-area-inset-bottom))` }}>
+        <button onClick={onNext} disabled={!valid} style={{
+          ...primaryBtn, opacity: valid ? 1 : 0.35, cursor: valid ? 'pointer' : 'not-allowed',
+        }}>신청 제출 →</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Confirm ───────────────────────────────────────────────────────────────────
+function Confirm({ form, selected, avail, onReset }) {
+  return (
+    <div style={{ padding:'40px 20px', paddingBottom:`calc(40px + env(safe-area-inset-bottom))` }}>
+      <div style={{ textAlign:'center', marginBottom:28 }}>
+        <div style={{
+          width:56, height:56, borderRadius:28,
+          background:`linear-gradient(135deg, ${C.a}, ${C.b})`,
+          margin:'0 auto 18px', display:'inline-flex', alignItems:'center', justifyContent:'center',
+          border:`1px solid ${C.line}`,
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="5 12 10 17 19 7" />
+          </svg>
+        </div>
+        <h2 style={{ fontSize:22, fontWeight:500, marginBottom:10, letterSpacing:-0.2 }}>신청이 접수되었습니다</h2>
+        <p style={{ fontSize:14, color:C.ink, opacity:0.8, lineHeight:1.7 }}>
+          실험에 참여해 주셔서 감사합니다!<br />
+          연구팀과 확인 후 일정 확정 안내해 드리겠습니다.
+        </p>
+      </div>
+
+      <div style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'16px 18px', marginBottom:20 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:14 }}>
+          <div style={{ fontSize:11, color:C.muted, letterSpacing:1.2, textTransform:'uppercase' }}>임시 예약</div>
+          <div style={{ fontSize:12, color:C.muted }}>{form.name || '—'}</div>
+        </div>
+        {selected.map((s, i) => {
+          const d = avail.find(day => day.key === s.key)?.date;
+          return (
+            <div key={i} style={{
+              display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'10px 0', borderTop: i > 0 ? `1px solid ${C.line}` : 'none',
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{
+                  width:20, height:20, borderRadius:10,
+                  background: i===0 ? C.a : i===1 ? C.b : C.c,
+                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                  fontSize:10, fontWeight:500,
+                }}>{i+1}</span>
+                <span style={{ fontSize:13, fontVariantNumeric:'tabular-nums' }}>
+                  {d ? fmtKoDate(d) : s.key}
+                </span>
+              </div>
+              <span style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
+                {s.time} – {addMin(s.time,40)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ textAlign:'center', fontSize:12, color:C.muted, lineHeight:1.7, marginBottom:24 }}>
+        24시간 이내에 확정 문자를 보내드립니다<br />문의: jessi2001@korea.ac.kr
+      </div>
+
+      <button onClick={onReset} style={{
+        ...btn(), width:'100%', padding:'13px', borderRadius:999,
+        background:'transparent', border:`1px solid ${C.line}`,
+        color:C.ink, fontSize:14, fontFamily:'inherit',
+      }}>처음으로 돌아가기</button>
+    </div>
+  );
+}
+
+// ── BookingApp ────────────────────────────────────────────────────────────────
+function BookingApp() {
+  const [step,     setStep]     = React.useState('intro');
+  const [selected, setSelected] = React.useState([]);
+  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', consent:false });
+  const [readInfo, setReadInfo] = React.useState(false);
+  const [avail,    setAvail]    = React.useState(() => buildAvailability(new Set(), new Set(), []));
+
+  const reset = () => {
+    setStep('intro'); setSelected([]); setReadInfo(false);
+    setForm({ name:'', dob:'', phone:'', consent:false });
+  };
+
+  const back = () => {
+    const prev = { info:'intro', sessions:'info', details:'sessions' };
+    if (prev[step]) setStep(prev[step]);
+  };
+
+  const submit = () => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    apiPost({ action: 'submit', submission: {
+      id: `req-${now.getTime()}`,
+      name: form.name.trim(),
+      dob: form.dob,
+      phone: form.phone.trim(),
+      pid: '',
+      submittedAt: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
+      status: 'pending',
+      sessions: selected.map(s => ({ key: s.key, time: s.time })),
+    }});
+    setStep('confirm');
+  };
+
+  return (
+    <div style={{ maxWidth:480, margin:'0 auto', minHeight:'100svh', background:C.bg }}>
+      <TopBar step={step} onBack={back} />
+      {step === 'intro'    && <Intro onNext={() => setStep('info')} />}
+      {step === 'info'     && <StudyInfo readInfo={readInfo} setReadInfo={setReadInfo} onNext={() => setStep('sessions')} />}
+      {step === 'sessions' && <Sessions selected={selected} setSelected={setSelected} avail={avail} setAvail={setAvail} onNext={() => setStep('details')} />}
+      {step === 'details'  && <Details form={form} setForm={setForm} selected={selected} avail={avail} onNext={submit} />}
+      {step === 'confirm'  && <Confirm form={form} selected={selected} avail={avail} onReset={reset} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<BookingApp />);
+</script>
+</body>
+</html>
