@@ -50,6 +50,14 @@ function addMin(t, n) {
 }
 
 const TODAY = new Date(2026, 6, 12);
+
+function fmtDob(v) {
+  if (!v) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) return ymd(d);
+  return v;
+}
 const DAY_HOURS = {
   '2026-07-12':[13,21],'2026-07-13':[9,21],'2026-07-14':[9,21],
   '2026-07-15':[9,21],'2026-07-16':[9,21],'2026-07-17':[9,21],
@@ -833,7 +841,7 @@ function ResearcherInbox() {
             <section style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:22 }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
                 <Cell C={C} k="이름" v={current.name} />
-                <Cell C={C} k="생년월일" v={current.dob ? current.dob.slice(0,10) : '—'} />
+                <Cell C={C} k="생년월일" v={fmtDob(current.dob)} />
                 <Cell C={C} k="휴대전화" v={current.phone} mono />
                 <Cell C={C} k="계좌번호" v={current.account || '—'} mono />
               </div>
