@@ -485,8 +485,9 @@ function Sessions({ selected, setSelected, onNext }) {
 }
 
 // ── Details ───────────────────────────────────────────────────────────────────
-function Details({ form, setForm, selected, avail, onNext }) {
-  const valid = form.name.trim() && form.dob && form.phone.trim() && form.consent;
+function Details({ form, setForm, selected, avail, onNext, onWithdraw }) {
+  const valid = form.name.trim() && form.dob && form.phone.trim() && form.account.trim() &&
+                form.smsConsent === 'yes' && form.consent === 'yes';
   const upd   = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const inputStyle = {
@@ -494,6 +495,17 @@ function Details({ form, setForm, selected, avail, onNext }) {
     borderRadius:10, padding:'13px 14px', fontSize:16, color:C.ink,
     fontFamily:'inherit', outline:'none',
   };
+
+  const choiceBtn = (active, onClick, label) => (
+    <button onClick={onClick} style={{
+      width:'100%', padding:'12px 14px', borderRadius:10, fontFamily:'inherit', fontSize:14,
+      cursor:'pointer', textAlign:'left', transition:'all 160ms',
+      border:`1px solid ${active ? C.ink : C.line}`,
+      background: active ? C.ink : C.surface,
+      color: active ? C.bg : C.ink,
+      fontWeight: active ? 500 : 400,
+    }}>{label}</button>
+  );
 
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'calc(100svh - 65px)' }}>
@@ -552,22 +564,35 @@ function Details({ form, setForm, selected, avail, onNext }) {
               onFocus={e => e.target.style.borderColor = C.ink}
               onBlur={e => e.target.style.borderColor = C.line} />
           </label>
-          <label style={{
-            display:'flex', gap:12, alignItems:'flex-start',
-            border:`1px solid ${form.consent ? C.ink : C.line}`, borderRadius:10,
-            padding:'14px', background:C.surface, cursor:'pointer',
-            transition:'border-color 160ms',
-          }}>
-            <input type="checkbox" checked={form.consent}
-                   onChange={e => setForm({ ...form, consent: e.target.checked })}
-                   style={{ marginTop:2, accentColor:C.ink, width:18, height:18, flexShrink:0 }} />
-            <div style={{ fontSize:13, lineHeight:1.55, color:C.ink }}>
-              <div style={{ marginBottom:3, fontWeight:500 }}>연구 참여 동의</div>
-              <div style={{ color:C.muted, fontSize:12 }}>
-                본 연구의 절차·녹음/녹화·개인정보 처리방침을 확인하였으며, 자발적으로 참여에 동의합니다.
-              </div>
-            </div>
+          <label style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <span style={{ fontSize:12, color:C.muted }}>계좌번호</span>
+            <input value={form.account} onChange={upd('account')} placeholder="카카오뱅크 3333-00-0000000" style={inputStyle}
+              onFocus={e => e.target.style.borderColor = C.ink}
+              onBlur={e => e.target.style.borderColor = C.line} />
           </label>
+
+          {/* SMS notification consent */}
+          <div style={{ border:`1px solid ${C.line}`, borderRadius:12, padding:'16px', background:C.surface }}>
+            <div style={{ fontSize:13, lineHeight:1.65, color:C.ink, marginBottom:14 }}>
+              신청하신 시간대를 바탕으로, 1~2일 내에 최종 확정된 실험 시간 및 안내사항을 문자로 안내드릴 예정입니다. 이에 동의하십니까?
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {choiceBtn(form.smsConsent==='yes', () => setForm({...form, smsConsent:'yes'}), '네, 문자 안내를 받는 것에 동의합니다.')}
+              {choiceBtn(false, onWithdraw, '아니요, 문자 안내에 동의하지 않습니다.')}
+            </div>
+          </div>
+
+          {/* Research participation consent */}
+          <div style={{ border:`1px solid ${C.line}`, borderRadius:12, padding:'16px', background:C.surface }}>
+            <div style={{ fontSize:14, fontWeight:500, color:C.ink, marginBottom:4 }}>연구 참여 동의</div>
+            <div style={{ fontSize:13, color:C.muted, lineHeight:1.6, marginBottom:14 }}>
+              본 연구의 절차·녹음/녹화·개인정보 처리방침을 확인하였으며, 자발적으로 참여에 동의합니다.
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {choiceBtn(form.consent==='yes', () => setForm({...form, consent:'yes'}), '동의합니다')}
+              {choiceBtn(false, onWithdraw, '동의하지 않습니다')}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -577,6 +602,33 @@ function Details({ form, setForm, selected, avail, onNext }) {
           ...primaryBtn, opacity: valid ? 1 : 0.35, cursor: valid ? 'pointer' : 'not-allowed',
         }}>신청 제출 →</button>
       </div>
+    </div>
+  );
+}
+
+// ── Withdrawn ─────────────────────────────────────────────────────────────────
+function Withdrawn({ onReset }) {
+  return (
+    <div style={{ padding:'60px 28px', textAlign:'center', paddingBottom:`calc(60px + env(safe-area-inset-bottom))` }}>
+      <div style={{
+        width:56, height:56, borderRadius:28,
+        background:C.surface, border:`1px solid ${C.line}`,
+        margin:'0 auto 22px', display:'inline-flex', alignItems:'center', justifyContent:'center',
+      }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </div>
+      <h2 style={{ fontSize:22, fontWeight:500, margin:'0 0 14px', letterSpacing:-0.2 }}>신청이 철회되었습니다</h2>
+      <p style={{ fontSize:14, color:C.muted, lineHeight:1.75, margin:'0 0 32px' }}>
+        연구 참여에 동의하시지 않음으로 연구 참여 신청은 철회 되었습니다.<br />
+        실수로 누르셨을 경우, 다시 처음부터 시작해주시면 감사하겠습니다.
+      </p>
+      <button onClick={onReset} style={{
+        ...btn(), padding:'13px 28px', borderRadius:999,
+        background:'transparent', border:`1px solid ${C.line}`,
+        color:C.ink, fontSize:14, fontFamily:'inherit',
+      }}>처음으로 돌아가기</button>
     </div>
   );
 }
@@ -651,13 +703,13 @@ function Confirm({ form, selected, avail, onReset }) {
 function BookingApp() {
   const [step,     setStep]     = React.useState('intro');
   const [selected, setSelected] = React.useState([]);
-  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', consent:false });
+  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
   const [readInfo, setReadInfo] = React.useState(false);
   const [avail,    setAvail]    = React.useState(() => buildAvailability(new Set(), new Set(), []));
 
   const reset = () => {
     setStep('intro'); setSelected([]); setReadInfo(false);
-    setForm({ name:'', dob:'', phone:'', consent:false });
+    setForm({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
   };
 
   const back = () => {
@@ -673,6 +725,7 @@ function BookingApp() {
       name: form.name.trim(),
       dob: form.dob,
       phone: form.phone.trim(),
+      account: form.account.trim(),
       pid: '',
       submittedAt: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
       status: 'pending',
@@ -687,8 +740,9 @@ function BookingApp() {
       {step === 'intro'    && <Intro onNext={() => setStep('info')} />}
       {step === 'info'     && <StudyInfo readInfo={readInfo} setReadInfo={setReadInfo} onNext={() => setStep('sessions')} />}
       {step === 'sessions' && <Sessions selected={selected} setSelected={setSelected} avail={avail} setAvail={setAvail} onNext={() => setStep('details')} />}
-      {step === 'details'  && <Details form={form} setForm={setForm} selected={selected} avail={avail} onNext={submit} />}
-      {step === 'confirm'  && <Confirm form={form} selected={selected} avail={avail} onReset={reset} />}
+      {step === 'details'   && <Details form={form} setForm={setForm} selected={selected} avail={avail} onNext={submit} onWithdraw={() => setStep('withdrawn')} />}
+      {step === 'confirm'   && <Confirm form={form} selected={selected} avail={avail} onReset={reset} />}
+      {step === 'withdrawn' && <Withdrawn onReset={reset} />}
     </div>
   );
 }
