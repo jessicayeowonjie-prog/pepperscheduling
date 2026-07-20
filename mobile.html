@@ -607,7 +607,7 @@ function Details({ form, setForm, selected, avail, onNext, onWithdraw }) {
 }
 
 // ── Withdrawn ─────────────────────────────────────────────────────────────────
-function Withdrawn({ onReset }) {
+function Withdrawn({ onBack }) {
   return (
     <div style={{ padding:'60px 28px', textAlign:'center', paddingBottom:`calc(60px + env(safe-area-inset-bottom))` }}>
       <div style={{
@@ -622,13 +622,13 @@ function Withdrawn({ onReset }) {
       <h2 style={{ fontSize:22, fontWeight:500, margin:'0 0 14px', letterSpacing:-0.2 }}>신청이 철회되었습니다</h2>
       <p style={{ fontSize:14, color:C.muted, lineHeight:1.75, margin:'0 0 32px' }}>
         연구 참여에 동의하시지 않음으로 연구 참여 신청은 철회 되었습니다.<br />
-        실수로 누르셨을 경우, 다시 처음부터 시작해주시면 감사하겠습니다.
+        실수로 누르셨을 경우, 이전 단계로 돌아가서 작성해주시면 감사하겠습니다.
       </p>
-      <button onClick={onReset} style={{
+      <button onClick={onBack} style={{
         ...btn(), padding:'13px 28px', borderRadius:999,
         background:'transparent', border:`1px solid ${C.line}`,
         color:C.ink, fontSize:14, fontFamily:'inherit',
-      }}>처음으로 돌아가기</button>
+      }}>이전 페이지로 돌아가기</button>
     </div>
   );
 }
@@ -742,7 +742,7 @@ function BookingApp() {
       {step === 'sessions' && <Sessions selected={selected} setSelected={setSelected} avail={avail} setAvail={setAvail} onNext={() => setStep('details')} />}
       {step === 'details'   && <Details form={form} setForm={setForm} selected={selected} avail={avail} onNext={submit} onWithdraw={() => setStep('withdrawn')} />}
       {step === 'confirm'   && <Confirm form={form} selected={selected} avail={avail} onReset={reset} />}
-      {step === 'withdrawn' && <Withdrawn onReset={reset} />}
+      {step === 'withdrawn' && <Withdrawn onBack={() => setStep('details')} />}
     </div>
   );
 }
