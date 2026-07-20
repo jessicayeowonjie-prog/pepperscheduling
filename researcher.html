@@ -830,12 +830,17 @@ function ResearcherInbox() {
               </div>
             </div>
 
-            <section style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:22 }}>
-              <Cell C={C} k="이름" v={current.name} />
-              <Cell C={C} k="생년월일" v={current.dob} />
-              <Cell C={C} k="휴대전화" v={current.phone} mono />
-              <EditableCell C={C} k="참여자 ID" v={current.pid} mono placeholder="P-000"
-                            onChange={(v) => patchCurrent({ pid: v })} />
+            <section style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:22 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12 }}>
+                <Cell C={C} k="이름" v={current.name} />
+                <Cell C={C} k="생년월일" v={current.dob ? current.dob.slice(0,10) : '—'} />
+                <Cell C={C} k="휴대전화" v={current.phone} mono />
+                <Cell C={C} k="계좌번호" v={current.account || '—'} mono />
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 3fr', gap:12 }}>
+                <EditableCell C={C} k="참여자 ID" v={current.pid} mono placeholder="P-000"
+                              onChange={(v) => patchCurrent({ pid: v })} />
+              </div>
             </section>
 
             <SessionsBlock C={C} current={current} patchCurrent={patchCurrent} />
