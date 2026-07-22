@@ -228,10 +228,11 @@ function Intro({ C, onNext }) {
         이 연구는 사람들이 소셜 로봇 페퍼(Pepper)와 반복적으로 대화할 때 자신의 생각을 어떻게 소통하는지,
         그리고 로봇의 설계가 그러한 소통 방식 및 관계적 결과에 어떠한 영향을 미치는지 알아보고자 설계된 실험 연구입니다.
       </p>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, margin:'0 0 36px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, margin:'0 0 36px' }}>
         <FactCard C={C} swatch={C.a} k="세션 수" v="3회" sub="각 40분" />
         <FactCard C={C} swatch={C.b} k="기간" v="2주 이내" sub="최소 1일 간격" />
         <FactCard C={C} swatch={C.c} k="장소" v="실험실 대면" sub="세부사항 안내" />
+        <FactCard C={C} swatch={C.accent} k="참여 보상" v="50,000원" sub="3회 세션 완료 시" />
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:16 }}>
         <button onClick={onNext} style={primaryBtn(C)}>연구 설명 보기 →</button>

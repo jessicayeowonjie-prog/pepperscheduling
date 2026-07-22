@@ -189,11 +189,18 @@ function Intro({ onNext }) {
         이 연구는 사람들이 소셜 로봇 페퍼(Pepper)와 반복적으로 대화할 때 자신의 생각을 어떻게 소통하는지,
         그리고 로봇의 설계가 그러한 소통 방식 및 관계적 결과에 어떠한 영향을 미치는지 알아보고자 설계된 실험 연구입니다.
       </p>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:32 }}>
-        {[['세션 수','3회','각 40분'],['기간','2주 이내','최소 1일 간격'],['장소','실험실 대면','세부사항 안내']].map(([k,v,sub]) => (
-          <div key={k} style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 10px' }}>
-            <div style={{ fontSize:10, color:C.muted, marginBottom:6 }}>{k}</div>
-            <div style={{ fontSize:16, fontWeight:500 }}>{v}</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:32 }}>
+        {[
+          ['세션 수','3회','각 40분', C.a],
+          ['기간','2주 이내','최소 1일 간격', C.b],
+          ['장소','실험실 대면','세부사항 안내', C.c],
+          ['참여 보상','50,000원','3회 세션 완료 시', C.accent],
+        ].map(([k,v,sub,sw]) => (
+          <div key={k} style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 12px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.muted, marginBottom:6 }}>
+              <span style={{ width:7, height:7, borderRadius:2, background:sw, flexShrink:0 }} />{k}
+            </div>
+            <div style={{ fontSize:17, fontWeight:500 }}>{v}</div>
             <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>{sub}</div>
           </div>
         ))}
