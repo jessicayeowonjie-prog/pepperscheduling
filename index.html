@@ -60,38 +60,18 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}
 const fmtKoDate = (d) => `${d.getMonth()+1}월 ${d.getDate()}일 (${KO_DAYS[d.getDay()]})`;
 const fmtTime   = (h, m) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 
-// Scheduling window: July 12–25, 2026
-const TODAY      = new Date(2026, 6, 12);
-const WINDOW_END = addDays(TODAY, 14);
+// Scheduling window (pilot test): Aug 24–26, 2026
+const TODAY      = new Date(2026, 7, 24);
+const WINDOW_END = addDays(TODAY, 2);
 
 const DAY_HOURS = {
-  '2026-07-12': [13, 21],
-  '2026-07-13': [ 9, 21],
-  '2026-07-14': [ 9, 21],
-  '2026-07-15': [ 9, 21],
-  '2026-07-16': [ 9, 21],
-  '2026-07-17': [ 9, 21],
-  '2026-07-18': [ 9, 21],
-  '2026-07-19': [13, 21],
-  '2026-07-20': [ 9, 21],
-  '2026-07-21': [ 9, 21],
-  '2026-07-22': [ 9, 21],
-  '2026-07-23': [ 9, 21],
-  '2026-07-24': [ 9, 21],
-  '2026-07-25': [ 9, 21],
+  '2026-08-24': [12, 15],
+  '2026-08-25': [12, 15],
+  '2026-08-26': [12, 15],
 };
 
 function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), customSlots = []) {
-  const taken = new Set([
-    '2026-07-13_10:00','2026-07-13_14:50',
-    '2026-07-14_11:50','2026-07-14_16:50',
-    '2026-07-15_09:55','2026-07-15_15:55',
-    '2026-07-16_13:05','2026-07-17_10:50','2026-07-17_19:30',
-    '2026-07-20_09:00','2026-07-20_14:00',
-    '2026-07-21_11:50','2026-07-22_15:55',
-    '2026-07-23_10:00','2026-07-23_18:25',
-    '2026-07-24_13:05',
-  ]);
+  const taken = new Set([]);
   extraTaken.forEach((t) => taken.add(t));
   openedSlots.forEach((k) => taken.delete(k));
   const days = [];
@@ -230,9 +210,9 @@ function Intro({ C, onNext }) {
       </p>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, margin:'0 0 36px' }}>
         <FactCard C={C} swatch={C.a} k="세션 수" v="3회" sub="각 40분" />
-        <FactCard C={C} swatch={C.b} k="기간" v="2주 이내" sub="최소 1일 간격" />
+        <FactCard C={C} swatch={C.b} k="기간" v="8/24–8/26" sub="최소 1일 간격" />
         <FactCard C={C} swatch={C.c} k="장소" v="실험실 대면" sub="세부사항 안내" />
-        <FactCard C={C} swatch={C.accent} k="참여 보상" v="50,000원" sub="3회 세션 완료 시" />
+        <FactCard C={C} swatch={C.accent} k="참여 보상" v="투썸플레이스 기프티콘" sub="3회 세션 완료 시" />
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:16 }}>
         <button onClick={onNext} style={primaryBtn(C)}>연구 설명 보기 →</button>
@@ -346,7 +326,7 @@ function StudyInfo({ C, readInfo, setReadInfo, onBack, onNext }) {
             </li>
             <li>
               <strong style={{ fontWeight:500 }}>마무리 및 보상 지급 (약 3~5분)</strong> · 궁금한 점을 질문하실 수 있으며,
-              보조 연구원이 간단한 안내를 드립니다. 모든 세션이 종료된 후 참여 보상(5만원 상당)이 지급됩니다.
+              보조 연구원이 간단한 안내를 드립니다. 모든 세션이 종료된 후 참여 보상(투썸플레이스 기프티콘)이 지급됩니다.
             </li>
           </ul>
 
@@ -490,7 +470,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
         <div>
           <h2 style={{ fontSize:24, fontWeight:500, margin:'0 0 6px', letterSpacing:-0.2 }}>세션 3회를 선택해 주세요</h2>
           <p style={{ fontSize:13, color:C.muted, margin:0 }}>
-            7월 12일 – 7월 25일 · 09:00 – 21:00 (일부 날짜는 13:00 시작) · 각 세션은 최소 1일 이상 간격을 두어야 합니다.
+            8월 24일 – 8월 26일 · 12:00 – 15:00 · 각 세션은 최소 1일 이상 간격을 두어야 합니다.
           </p>
         </div>
         <SelectionPills C={C} selected={selected} onRemove={(s) => toggle(s.key, s.time)} />
