@@ -83,10 +83,10 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), cust
     if (hrs) {
       const [startHour, endHour] = hrs;
       let h = startHour, m = 0;
-      while (h * 60 + m + 40 <= endHour * 60) {
+      while (h * 60 + m + 20 <= endHour * 60) {
         const t = fmtTime(h, m);
         slots.push({ time: t, taken: taken.has(`${key}_${t}`) });
-        m += 55;
+        m += 20;
         while (m >= 60) { m -= 60; h++; }
       }
     }
@@ -209,7 +209,7 @@ function Intro({ C, onNext }) {
         그리고 로봇의 설계가 그러한 소통 방식 및 관계적 결과에 어떠한 영향을 미치는지 알아보고자 설계된 실험 연구입니다.
       </p>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, margin:'0 0 36px' }}>
-        <FactCard C={C} swatch={C.a} k="세션 수" v="3회" sub="각 40분" />
+        <FactCard C={C} swatch={C.a} k="세션 수" v="3회" sub="각 20분" />
         <FactCard C={C} swatch={C.b} k="기간" v="8/24–8/26" sub="최소 1일 간격" />
         <FactCard C={C} swatch={C.c} k="장소" v="실험실 대면" sub="세부사항 안내" />
         <FactCard C={C} swatch={C.accent} k="참여 보상" v="투썸플레이스 기프티콘" sub="3회 세션 완료 시" />
@@ -336,7 +336,7 @@ function StudyInfo({ C, readInfo, setReadInfo, onBack, onNext }) {
             처리되어 연구 이외의 목적으로 사용되지 않습니다.
           </p>
           <p style={{ margin:'0 0 18px' }}>
-            참여 보상 지급을 위해 성명, 전화번호, 은행 계좌번호, 신분증 정보가 수집될 수 있으며, 관련 법규에 따라
+            참여 보상 지급을 위해 성명, 전화번호, 신분증 정보가 수집될 수 있으며, 관련 법규에 따라
             안전하게 관리된 후 연구 종료 시 폐기됩니다.
           </p>
 
@@ -665,7 +665,7 @@ function Legend({ swatch, label, outline }) {
 
 // ── Details ───────────────────────────────────────────────────────────────────
 function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
-  const valid = form.name.trim() && form.dob && form.phone.trim() && form.account.trim() &&
+  const valid = form.name.trim() && form.dob && form.phone.trim() &&
                 form.smsConsent === 'yes' && form.consent === 'yes';
   const upd   = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -693,8 +693,6 @@ function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
             <Field C={C} label="생년월일" type="date" value={form.dob} onChange={upd('dob')} />
             <Field C={C} label="휴대전화" placeholder="010-0000-0000" value={form.phone} onChange={upd('phone')} />
           </div>
-          <Field C={C} label="계좌번호" placeholder="카카오뱅크 3333-00-0000000" value={form.account} onChange={upd('account')} />
-
           {/* SMS notification consent */}
           <div style={{ border:`1px solid ${C.line}`, borderRadius:10, padding:'16px', background:C.surface }}>
             <div style={{ fontSize:13, lineHeight:1.65, color:C.ink, marginBottom:14 }}>
@@ -740,7 +738,7 @@ function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
       }}>
         <div style={{ fontSize:11, letterSpacing:1.2, color:C.muted, textTransform:'uppercase', marginBottom:12 }}>요약</div>
         <div style={{ fontSize:14, fontWeight:500, marginBottom:4 }}>선택한 세션</div>
-        <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>각 40분 · 실험실 대면</div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>각 20분 · 실험실 대면</div>
         <ol style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
           {selected.map((s, i) => {
             const d = dayByKey(s.key).date;
@@ -754,7 +752,7 @@ function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
                 }}>{i+1}</span>
                 <div>
                   <div style={{ fontSize:13, fontVariantNumeric:'tabular-nums' }}>{fmtKoDate(d)}</div>
-                  <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>{s.time} – {addMin(s.time,40)}</div>
+                  <div style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>{s.time} – {addMin(s.time,20)}</div>
                 </div>
               </li>
             );
@@ -825,7 +823,7 @@ function Confirm({ C, form, selected, onReset }) {
                   }}>{i+1}</span>
                   <span style={{ fontSize:14, fontVariantNumeric:'tabular-nums' }}>{fmtKoDate(d)}</span>
                 </div>
-                <div style={{ fontSize:13, color:C.muted, fontVariantNumeric:'tabular-nums' }}>{s.time} – {addMin(s.time,40)}</div>
+                <div style={{ fontSize:13, color:C.muted, fontVariantNumeric:'tabular-nums' }}>{s.time} – {addMin(s.time,20)}</div>
               </div>
             );
           })}
@@ -880,12 +878,12 @@ function BookingApp() {
   const C = PALETTES.blush;
   const [step, setStep]         = React.useState('intro');
   const [selected, setSelected] = React.useState([]);
-  const [form, setForm]         = React.useState({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
+  const [form, setForm]         = React.useState({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
   const [readInfo, setReadInfo] = React.useState(false);
 
   const reset = () => {
     setStep('intro'); setSelected([]);
-    setForm({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
+    setForm({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
     setReadInfo(false);
   };
 
@@ -897,7 +895,6 @@ function BookingApp() {
       name: form.name.trim(),
       dob:  form.dob,
       phone: form.phone.trim(),
-      account: form.account.trim(),
       pid: '',
       submittedAt: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
       status: 'pending',
