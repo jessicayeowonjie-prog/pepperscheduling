@@ -531,7 +531,7 @@ function Details({ form, setForm, selected, avail, onNext, onWithdraw }) {
                   </span>
                 </div>
                 <span style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
-                  {s.time} – {addMin(s.time,40)}
+                  {s.time} – {addMin(s.time,20)}
                 </span>
               </div>
             );
@@ -668,7 +668,7 @@ function Confirm({ form, selected, avail, onReset }) {
                 </span>
               </div>
               <span style={{ fontSize:12, color:C.muted, fontVariantNumeric:'tabular-nums' }}>
-                {s.time} – {addMin(s.time,40)}
+                {s.time} – {addMin(s.time,20)}
               </span>
             </div>
           );
@@ -692,13 +692,13 @@ function Confirm({ form, selected, avail, onReset }) {
 function BookingApp() {
   const [step,     setStep]     = React.useState('intro');
   const [selected, setSelected] = React.useState([]);
-  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:', smsConsent:null, consent:null });
+  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
   const [readInfo, setReadInfo] = React.useState(false);
   const [avail,    setAvail]    = React.useState(() => buildAvailability(new Set(), new Set(), []));
 
   const reset = () => {
     setStep('intro'); setSelected([]); setReadInfo(false);
-    setForm({ name:'', dob:'', phone:', smsConsent:null, consent:null });
+    setForm({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
   };
 
   const back = () => {
