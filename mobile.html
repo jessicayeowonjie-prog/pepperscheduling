@@ -50,26 +50,13 @@ function addMin(t, n) {
   return fmtTime(Math.floor(tot/60), tot%60);
 }
 
-const TODAY = new Date(2026, 6, 12);
+const TODAY = new Date(2026, 7, 24);
 const DAY_HOURS = {
-  '2026-07-12':[13,21],'2026-07-13':[9,21],'2026-07-14':[9,21],
-  '2026-07-15':[9,21],'2026-07-16':[9,21],'2026-07-17':[9,21],
-  '2026-07-18':[9,21],'2026-07-19':[13,21],'2026-07-20':[9,21],
-  '2026-07-21':[9,21],'2026-07-22':[9,21],'2026-07-23':[9,21],
-  '2026-07-24':[9,21],'2026-07-25':[9,21],
+  '2026-08-24':[12,15],'2026-08-25':[12,15],'2026-08-26':[12,15],
 };
 
 function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), customSlots = []) {
-  const taken = new Set([
-    '2026-07-13_10:00','2026-07-13_14:50',
-    '2026-07-14_11:50','2026-07-14_16:50',
-    '2026-07-15_09:55','2026-07-15_15:55',
-    '2026-07-16_13:05','2026-07-17_10:50','2026-07-17_19:30',
-    '2026-07-20_09:00','2026-07-20_14:00',
-    '2026-07-21_11:50','2026-07-22_15:55',
-    '2026-07-23_10:00','2026-07-23_18:25',
-    '2026-07-24_13:05',
-  ]);
+  const taken = new Set([]);
   extraTaken.forEach(t => taken.add(t));
   openedSlots.forEach(k => taken.delete(k));
   const days = [];
@@ -192,9 +179,9 @@ function Intro({ onNext }) {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:32 }}>
         {[
           ['세션 수','3회','각 40분', C.a],
-          ['기간','2주 이내','최소 1일 간격', C.b],
+          ['기간','8/24–8/26','최소 1일 간격', C.b],
           ['장소','실험실 대면','세부사항 안내', C.c],
-          ['참여 보상','50,000원','3회 세션 완료 시', C.accent],
+          ['참여 보상','투썸플레이스 기프티콘','3회 세션 완료 시', C.accent],
         ].map(([k,v,sub,sw]) => (
           <div key={k} style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 12px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.muted, marginBottom:6 }}>
@@ -265,7 +252,7 @@ function StudyInfo({ readInfo, setReadInfo, onNext }) {
             ['사전 설문 (약 5분)','기본적인 인구통계학적 질문과 함께 로봇에 대한 사전 태도에 관한 설문에 응답하시게 됩니다. 첫 번째 세션에서만 진행됩니다.'],
             ['소셜 로봇 페퍼(Pepper)와의 대화 세션 (세션당 약 5~10분)','페퍼와 1:1로 대화를 나누시게 됩니다. 각 세션은 약 1주일 간격으로 진행됩니다.'],
             ['반구조화 인터뷰 (약 30분, 마지막 세션에만 진행)','세 번째 세션이 끝난 후 연구원과의 인터뷰가 진행됩니다.'],
-            ['마무리 및 보상 지급 (약 3~5분)','모든 세션이 종료된 후 참여 보상(5만원 상당)이 지급됩니다.'],
+            ['마무리 및 보상 지급 (약 3~5분)','모든 세션이 종료된 후 참여 보상(투썸플레이스 기프티콘)이 지급됩니다.'],
           ].map(([title, desc]) => (
             <li key={title} style={{ marginBottom:12 }}>
               <strong style={{ fontWeight:500 }}>{title}</strong><br />
@@ -376,7 +363,7 @@ function Sessions({ selected, setSelected, onNext }) {
       <div style={{ padding:'14px 20px 10px', flexShrink:0 }}>
         <div style={{ fontSize:13, fontWeight:500, marginBottom:4 }}>세션 3회를 선택해 주세요</div>
         <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
-          7월 12일 – 25일 · 각 세션은 최소 1일 간격
+        8월 24일 – 26일 · 12:00–15:00 · 각 세션은 최소 1일 간격
         </div>
         <div style={{ display:'flex', gap:6 }}>
           {[0,1,2].map(i => {
