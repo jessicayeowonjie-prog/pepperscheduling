@@ -361,7 +361,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXdMr1XaCuQx-1__vtk
 async function apiGet() {
   try {
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 12000);
+    const tid  = setTimeout(() => ctrl.abort(), 30000);
     const res  = await fetch(`${SCRIPT_URL}?t=${Date.now()}`, { signal: ctrl.signal });
     clearTimeout(tid);
     return await res.json();
