@@ -49,7 +49,10 @@ function addMin(t, n) {
   return fmtTime(Math.floor(total/60), total%60);
 }
 
-const TODAY = new Date(2026, 7, 24);
+function keyToDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 function fmtDob(v) {
   if (!v) return '—';
@@ -62,12 +65,15 @@ const DAY_HOURS = {
   '2026-08-24':[12,15],'2026-08-25':[12,15],'2026-08-26':[12,15],
 };
 
-function buildAvailability() {
+// Builds one entry per date that has either preset hours (DAY_HOURS) or a
+// researcher-added custom slot, sorted chronologically — not limited to a
+// fixed window, so slots can be added for any future day/month.
+function buildAvailability(customSlots = []) {
   const taken = new Set([]);
-  const days = [];
-  for (let i = 0; i < 14; i++) {
-    const d   = addDays(TODAY, i);
-    const key = ymd(d);
+  const keys = new Set(Object.keys(DAY_HOURS));
+  (customSlots || []).forEach((s) => keys.add(s.key));
+  return [...keys].sort().map((key) => {
+    const d = keyToDate(key);
     const hrs = DAY_HOURS[key];
     const slots = [];
     if (hrs) {
@@ -80,13 +86,9 @@ function buildAvailability() {
         while (m >= 60) { m -= 60; h++; }
       }
     }
-    days.push({ date: d, key, slots });
-  }
-  return days;
+    return { date: d, key, slots };
+  });
 }
-
-const AVAILABILITY = buildAvailability();
-const dayByKey = (k) => AVAILABILITY.find((d) => d.key === k);
 
 
 // ── StatusPill ────────────────────────────────────────────────────────────────
@@ -207,8 +209,8 @@ function DeleteRequestButton({ C, onDelete }) {
 }
 
 // ── SessionEditorRow ──────────────────────────────────────────────────────────
-function SessionEditorRow({ C, session, index, dot, onChange, isFirst }) {
-  const availableDays  = AVAILABILITY.filter((d) => d.slots.some((s) => !s.taken));
+function SessionEditorRow({ C, session, index, dot, onChange, isFirst, availability, dayByKey }) {
+  const availableDays  = availability.filter((d) => d.slots.some((s) => !s.taken));
   const currentDay     = dayByKey(session.key);
   const availableTimes = currentDay
     ? currentDay.slots.filter((s) => !s.taken || s.time === session.time)
@@ -251,7 +253,7 @@ function SessionEditorRow({ C, session, index, dot, onChange, isFirst }) {
 }
 
 // ── SessionsBlock ─────────────────────────────────────────────────────────────
-function SessionsBlock({ C, current, patchCurrent }) {
+function SessionsBlock({ C, current, patchCurrent, availability, dayByKey }) {
   const [editing, setEditing] = React.useState(false);
   const [draft,   setDraft]   = React.useState(current.sessions);
 
@@ -312,7 +314,8 @@ function SessionsBlock({ C, current, patchCurrent }) {
         if (editing) {
           return (
             <SessionEditorRow key={i} C={C} session={s} index={i} dot={dot}
-              onChange={(patch) => updateSession(i, patch)} isFirst={i===0} />
+              onChange={(patch) => updateSession(i, patch)} isFirst={i===0}
+              availability={availability} dayByKey={dayByKey} />
           );
         }
         const d = dayByKey(s.key);
@@ -521,8 +524,48 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
   );
 }
 
+// ── AddSlotDayForm — add a slot on any day/month, not just ones already shown ──
+function AddSlotDayForm({ C, addCustomSlot }) {
+  const [date, setDate] = React.useState('');
+  const [time, setTime] = React.useState('');
+  const [msg,  setMsg]  = React.useState('');
+
+  const add = () => {
+    if (!date || !time) return;
+    addCustomSlot({ key: date, time });
+    setMsg(`${date} ${time} 추가됨`);
+    setTime('');
+    setTimeout(() => setMsg(''), 2500);
+  };
+
+  const inputStyle = {
+    padding:'8px 10px', borderRadius:8, border:`1px solid ${C.line}`,
+    fontFamily:'inherit', fontSize:12, background:C.bg, color:C.ink, outline:'none',
+  };
+
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
+      padding:'12px 14px', marginBottom:14,
+      background:C.surface, border:`1px solid ${C.line}`, borderRadius:10,
+    }}>
+      <span style={{ fontSize:12, fontWeight:500, color:C.ink, flexShrink:0 }}>새 날짜에 슬롯 추가</span>
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
+      <button onClick={add} disabled={!date || !time} style={{
+        padding:'8px 16px', borderRadius:999, border:'none', fontFamily:'inherit',
+        fontSize:12, fontWeight:500,
+        background: (date && time) ? C.ink : C.line,
+        color: (date && time) ? C.surface : C.muted,
+        cursor: (date && time) ? 'pointer' : 'not-allowed',
+      }}>추가</button>
+      {msg && <span style={{ fontSize:11, color:C.accent }}>{msg}</span>}
+    </div>
+  );
+}
+
 // ── CalendarView ──────────────────────────────────────────────────────────────
-function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
+function CalendarView({ C, reqs, availability, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
   const slotMap = React.useMemo(() => {
     const map = {};
     reqs.forEach((r) => {
@@ -535,7 +578,16 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpe
     return map;
   }, [reqs]);
 
-  const weeks = [AVAILABILITY.slice(0, 7), AVAILABILITY.slice(7)];
+  // Group days by month so any number of future months can be browsed.
+  const monthGroups = React.useMemo(() => {
+    const map = new Map();
+    availability.forEach((day) => {
+      const mk = day.key.slice(0, 7); // "YYYY-MM"
+      if (!map.has(mk)) map.set(mk, []);
+      map.get(mk).push(day);
+    });
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [availability]);
 
   const legendItems = [
     [C.bg, C.line, '가능 (클릭 → 차단)'],
@@ -547,7 +599,9 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpe
 
   return (
     <div style={{ flex:1, overflow:'auto', padding:'14px 20px 20px' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12, flexWrap:'wrap' }}>
+      <AddSlotDayForm C={C} addCustomSlot={addCustomSlot} />
+
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:C.muted, letterSpacing:0.8, textTransform:'uppercase', flexShrink:0 }}>범례</span>
         {legendItems.map(([bg, border, label]) => (
           <span key={label} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:C.muted }}>
@@ -557,16 +611,28 @@ function CalendarView({ C, reqs, closedSlots, toggleSlot, openedSlots, toggleOpe
         ))}
       </div>
 
-      {weeks.map((week, wi) => (
-        <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:6, marginBottom:6 }}>
-          {week.map((day) => (
-            <DayCard key={day.key} C={C} day={day} slotMap={slotMap}
-                     closedSlots={closedSlots} toggleSlot={toggleSlot}
-                     openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
-                     customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
-          ))}
-        </div>
-      ))}
+      {monthGroups.length === 0 && (
+        <div style={{ color:C.muted, fontSize:13, padding:'20px 0' }}>등록된 날짜가 없습니다. 위에서 새 날짜를 추가해 주세요.</div>
+      )}
+
+      {monthGroups.map(([mk, days]) => {
+        const [y, m] = mk.split('-');
+        return (
+          <div key={mk} style={{ marginBottom:20 }}>
+            <div style={{ fontSize:13, fontWeight:500, color:C.ink, marginBottom:8 }}>{y}년 {Number(m)}월</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {days.map((day) => (
+                <div key={day.key} style={{ width:132, flexShrink:0 }}>
+                  <DayCard C={C} day={day} slotMap={slotMap}
+                           closedSlots={closedSlots} toggleSlot={toggleSlot}
+                           openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
+                           customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -586,6 +652,14 @@ function ResearcherInbox() {
   const [openedSlots,  setOpenedSlotsRaw] = React.useState([]);
   const [customSlots,  setCustomSlotsRaw] = React.useState([]);
   const [apiError,     setApiError]       = React.useState(null);
+
+  // Recomputed on every render so newly-added custom slots (any day/month)
+  // show up immediately everywhere dates are looked up.
+  const availability = React.useMemo(() => buildAvailability(customSlots), [customSlots]);
+  const dayByKey = React.useCallback(
+    (k) => availability.find((d) => d.key === k),
+    [availability]
+  );
 
   // ── Initial load from Sheets ─────────────────────────────────────────────────
   React.useEffect(() => {
@@ -720,7 +794,7 @@ function ResearcherInbox() {
       <TabNav C={C} view={view} setView={setView} />
 
       {view === 'calendar' ? (
-        <CalendarView C={C} reqs={reqs} closedSlots={closedSlots} toggleSlot={toggleSlot}
+        <CalendarView C={C} reqs={reqs} availability={availability} closedSlots={closedSlots} toggleSlot={toggleSlot}
                       openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
                       customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
       ) : !current ? (
@@ -838,7 +912,8 @@ function ResearcherInbox() {
               </div>
             </section>
 
-            <SessionsBlock C={C} current={current} patchCurrent={patchCurrent} />
+            <SessionsBlock C={C} current={current} patchCurrent={patchCurrent}
+                           availability={availability} dayByKey={dayByKey} />
 
             {/* SMS template */}
             <section style={{ background:C.bg, border:`1px dashed ${C.line}`, borderRadius:12, padding:'16px 20px' }}>
