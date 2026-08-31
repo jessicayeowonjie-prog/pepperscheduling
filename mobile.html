@@ -50,7 +50,8 @@ function addMin(t, n) {
   return fmtTime(Math.floor(tot/60), tot%60);
 }
 
-const TODAY = new Date(2026, 7, 24);
+const NOW = new Date();
+const TODAY = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
 // Each date maps to a list of ['HH:MM','HH:MM'] windows (a day can have more
 // than one window, e.g. a morning slot and an evening slot).
 const DAY_HOURS = {
@@ -110,7 +111,7 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), cust
   openedSlots.forEach(k => taken.delete(k));
   const keys = new Set(Object.keys(DAY_HOURS));
   (customSlots || []).forEach(s => keys.add(s.key));
-  const days = [...keys].sort().map(key => {
+  const days = [...keys].sort().filter(key => keyToDate(key) >= TODAY).map(key => {
     const d   = keyToDate(key);
     const hrs = DAY_HOURS[key];
     const slots = [];
