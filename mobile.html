@@ -181,7 +181,7 @@ function Intro({ onNext }) {
           ['세션 수','3회','각 20분', C.a],
           ['기간','8/24–8/26','최소 1일 간격', C.b],
           ['장소','실험실 대면','세부사항 안내', C.c],
-          ['참여 보상','투썸플레이스 기프티콘','3회 세션 완료 시', C.accent],
+          ['참여 보상','50,000원','3회 세션 완료 시', C.accent],
         ].map(([k,v,sub,sw]) => (
           <div key={k} style={{ background:C.surface, border:`1px solid ${C.line}`, borderRadius:12, padding:'14px 12px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.muted, marginBottom:6 }}>
@@ -252,7 +252,7 @@ function StudyInfo({ readInfo, setReadInfo, onNext }) {
             ['사전 설문 (약 5분)','기본적인 인구통계학적 질문과 함께 로봇에 대한 사전 태도에 관한 설문에 응답하시게 됩니다. 첫 번째 세션에서만 진행됩니다.'],
             ['소셜 로봇 페퍼(Pepper)와의 대화 세션 (세션당 약 5~10분)','페퍼와 1:1로 대화를 나누시게 됩니다. 각 세션은 약 1주일 간격으로 진행됩니다.'],
             ['반구조화 인터뷰 (약 30분, 마지막 세션에만 진행)','세 번째 세션이 끝난 후 연구원과의 인터뷰가 진행됩니다.'],
-            ['마무리 및 보상 지급 (약 3~5분)','모든 세션이 종료된 후 참여 보상(투썸플레이스 기프티콘)이 지급됩니다.'],
+            ['마무리 및 보상 지급 (약 3~5분)','모든 세션이 종료된 후 참여 보상(5만원 상당)이 지급됩니다.'],
           ].map(([title, desc]) => (
             <li key={title} style={{ marginBottom:12 }}>
               <strong style={{ fontWeight:500 }}>{title}</strong><br />
@@ -363,7 +363,7 @@ function Sessions({ selected, setSelected, onNext }) {
       <div style={{ padding:'14px 20px 10px', flexShrink:0 }}>
         <div style={{ fontSize:13, fontWeight:500, marginBottom:4 }}>세션 3회를 선택해 주세요</div>
         <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
-        8월 24일 – 26일 · 12:00–15:00 · 각 세션은 최소 1일 간격
+          8월 24일 – 26일 · 12:00–15:00 · 각 세션은 최소 1일 간격
         </div>
         <div style={{ display:'flex', gap:6 }}>
           {[0,1,2].map(i => {
@@ -480,7 +480,7 @@ function Sessions({ selected, setSelected, onNext }) {
 
 // ── Details ───────────────────────────────────────────────────────────────────
 function Details({ form, setForm, selected, avail, onNext, onWithdraw }) {
-   const valid = form.name.trim() && form.dob && form.phone.trim() &&
+  const valid = form.name.trim() && form.dob && form.phone.trim() && form.account.trim() &&
                 form.smsConsent === 'yes' && form.consent === 'yes';
   const upd   = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -558,7 +558,12 @@ function Details({ form, setForm, selected, avail, onNext, onWithdraw }) {
               onFocus={e => e.target.style.borderColor = C.ink}
               onBlur={e => e.target.style.borderColor = C.line} />
           </label>
-        
+          <label style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <span style={{ fontSize:12, color:C.muted }}>계좌번호</span>
+            <input value={form.account} onChange={upd('account')} placeholder="카카오뱅크 3333-00-0000000" style={inputStyle}
+              onFocus={e => e.target.style.borderColor = C.ink}
+              onBlur={e => e.target.style.borderColor = C.line} />
+          </label>
 
           {/* SMS notification consent */}
           <div style={{ border:`1px solid ${C.line}`, borderRadius:12, padding:'16px', background:C.surface }}>
@@ -692,13 +697,13 @@ function Confirm({ form, selected, avail, onReset }) {
 function BookingApp() {
   const [step,     setStep]     = React.useState('intro');
   const [selected, setSelected] = React.useState([]);
-  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
+  const [form,     setForm]     = React.useState({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
   const [readInfo, setReadInfo] = React.useState(false);
   const [avail,    setAvail]    = React.useState(() => buildAvailability(new Set(), new Set(), []));
 
   const reset = () => {
     setStep('intro'); setSelected([]); setReadInfo(false);
-    setForm({ name:'', dob:'', phone:'', smsConsent:null, consent:null });
+    setForm({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
   };
 
   const back = () => {
@@ -714,6 +719,7 @@ function BookingApp() {
       name: form.name.trim(),
       dob: form.dob,
       phone: form.phone.trim(),
+      account: form.account.trim(),
       pid: '',
       submittedAt: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
       status: 'pending',

@@ -361,7 +361,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXdMr1XaCuQx-1__vtk
 async function apiGet() {
   try {
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 12000);
+    const tid  = setTimeout(() => ctrl.abort(), 30000);
     const res  = await fetch(`${SCRIPT_URL}?t=${Date.now()}`, { signal: ctrl.signal });
     clearTimeout(tid);
     return await res.json();
@@ -830,6 +830,7 @@ function ResearcherInbox() {
                 <Cell C={C} k="이름" v={current.name} />
                 <Cell C={C} k="생년월일" v={fmtDob(current.dob)} />
                 <Cell C={C} k="휴대전화" v={current.phone} mono />
+                <Cell C={C} k="계좌번호" v={current.account || '—'} mono />
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 3fr', gap:12 }}>
                 <EditableCell C={C} k="참여자 ID" v={current.pid} mono placeholder="P-000"
