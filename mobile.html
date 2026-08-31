@@ -361,7 +361,7 @@ function StudyInfo({ readInfo, setReadInfo, onNext }) {
 // ── Sessions ──────────────────────────────────────────────────────────────────
 function Sessions({ selected, setSelected, onNext }) {
   const [avail, setAvail] = React.useState(() => buildAvailability(new Set(), new Set(), []));
-  const [focus, setFocus] = React.useState(null);
+  const [focus, setFocus] = React.useState(() => ymd(TODAY));
   const stripRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -387,13 +387,10 @@ function Sessions({ selected, setSelected, onNext }) {
     return () => clearInterval(id);
   }, []);
 
-  const availDays = avail.filter(d => d.slots.some(s => !s.taken));
-
-  React.useEffect(() => {
-    if (!focus && availDays.length) setFocus(availDays[0].key);
-  }, [avail]);
-
-  const focusDay = avail.find(d => d.key === focus);
+  const focusDay   = avail.find(d => d.key === focus);
+  const isTodayFocus = focus === ymd(TODAY);
+  const focusDate  = focusDay ? focusDay.date : keyToDate(focus);
+  const focusSlots = focusDay ? focusDay.slots : [];
 
   const toggle = (key, time) => {
     const day  = avail.find(d => d.key === key);
@@ -473,45 +470,36 @@ function Sessions({ selected, setSelected, onNext }) {
 
       {/* Time slots */}
       <div style={{ flex:1, overflowY:'auto', padding:'14px 20px 100px' }}>
-        {focusDay ? (
-          <>
-            <div style={{ fontSize:13, fontWeight:500, marginBottom:12, color:C.muted }}>
-              {focusDay.date.getMonth()+1}월 {focusDay.date.getDate()}일 ({KO_DAYS[focusDay.date.getDay()]}) · 가능한 시간
+        <div style={{ fontSize:13, fontWeight:500, marginBottom:12, color:C.muted }}>
+          {focusDate.getMonth()+1}월 {focusDate.getDate()}일 ({KO_DAYS[focusDate.getDay()]}) · 가능한 시간
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+          {focusSlots.map(s => {
+            const isSel   = !!selected.find(x => x.key === focus && x.time === s.time);
+            const tooClose = !s.taken && !isSel && selected.some(x => Math.abs((new Date(focus) - new Date(x.key)) / 86400000) < 1);
+            return (
+              <button key={s.time} onClick={() => !s.taken && toggle(focus, s.time)}
+                disabled={s.taken || tooClose} style={{
+                  padding:'12px 6px', borderRadius:10, fontFamily:'inherit', fontSize:13,
+                  fontVariantNumeric:'tabular-nums', textAlign:'center',
+                  border:`1px solid ${isSel ? 'transparent' : s.taken ? C.line : tooClose ? C.line : C.line}`,
+                  background: isSel ? C.ink : s.taken ? C.bg : tooClose ? C.bg : C.surface,
+                  color: isSel ? C.surface : s.taken ? C.muted : tooClose ? C.muted : C.ink,
+                  cursor: s.taken || tooClose ? 'not-allowed' : 'pointer',
+                  opacity: s.taken ? 0.4 : tooClose ? 0.35 : 1,
+                }}>
+                <div style={{ fontWeight: isSel ? 500 : 400 }}>{s.time}</div>
+                {isSel && <div style={{ fontSize:9, marginTop:3, opacity:0.7 }}>선택됨</div>}
+                {s.taken && <div style={{ fontSize:9, marginTop:3 }}>마감</div>}
+              </button>
+            );
+          })}
+          {focusSlots.length === 0 && (
+            <div style={{ gridColumn:'1/-1', color:C.muted, fontSize:13, padding:'20px 0', textAlign:'center' }}>
+              {isTodayFocus ? '오늘 신청 가능한 시간대는 없습니다.' : '이 날에는 가능한 시간대가 없습니다.'}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-              {focusDay.slots.map(s => {
-                const isSel   = !!selected.find(x => x.key === focusDay.key && x.time === s.time);
-                const canAdd  = !s.taken && !isSel && selected.length < 3;
-                const tooClose = !s.taken && !isSel && selected.some(x => Math.abs((new Date(focusDay.key) - new Date(x.key)) / 86400000) < 1);
-                return (
-                  <button key={s.time} onClick={() => !s.taken && toggle(focusDay.key, s.time)}
-                    disabled={s.taken || tooClose} style={{
-                      padding:'12px 6px', borderRadius:10, fontFamily:'inherit', fontSize:13,
-                      fontVariantNumeric:'tabular-nums', textAlign:'center',
-                      border:`1px solid ${isSel ? 'transparent' : s.taken ? C.line : tooClose ? C.line : C.line}`,
-                      background: isSel ? C.ink : s.taken ? C.bg : tooClose ? C.bg : C.surface,
-                      color: isSel ? C.surface : s.taken ? C.muted : tooClose ? C.muted : C.ink,
-                      cursor: s.taken || tooClose ? 'not-allowed' : 'pointer',
-                      opacity: s.taken ? 0.4 : tooClose ? 0.35 : 1,
-                    }}>
-                    <div style={{ fontWeight: isSel ? 500 : 400 }}>{s.time}</div>
-                    {isSel && <div style={{ fontSize:9, marginTop:3, opacity:0.7 }}>선택됨</div>}
-                    {s.taken && <div style={{ fontSize:9, marginTop:3 }}>마감</div>}
-                  </button>
-                );
-              })}
-              {focusDay.slots.length === 0 && (
-                <div style={{ gridColumn:'1/-1', color:C.muted, fontSize:13, padding:'20px 0', textAlign:'center' }}>
-                  이 날에는 가능한 시간대가 없습니다.
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div style={{ color:C.muted, fontSize:13, textAlign:'center', paddingTop:32 }}>
-            날짜를 선택해 주세요.
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Bottom nav */}
