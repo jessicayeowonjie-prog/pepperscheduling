@@ -60,7 +60,8 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}
 const fmtKoDate = (d) => `${d.getMonth()+1}월 ${d.getDate()}일 (${KO_DAYS[d.getDay()]})`;
 const fmtTime   = (h, m) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 
-const TODAY      = new Date(2026, 7, 24);
+const NOW = new Date();
+const TODAY = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
 const WINDOW_END = addDays(TODAY, 2);
 
 // Each date maps to a list of ['HH:MM','HH:MM'] windows (a day can have more
@@ -124,7 +125,7 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), cust
   openedSlots.forEach((k) => taken.delete(k));
   const keys = new Set(Object.keys(DAY_HOURS));
   (customSlots || []).forEach((s) => keys.add(s.key));
-  return [...keys].sort().map((key) => {
+  return [...keys].sort().filter((key) => keyToDate(key) >= TODAY).map((key) => {
     const d    = keyToDate(key);
     const hrs  = DAY_HOURS[key];
     const slots = [];
