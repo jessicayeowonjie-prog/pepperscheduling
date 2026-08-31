@@ -498,11 +498,17 @@ function Sessions({ C, selected, setSelected, avail, setAvail, onBack, onNext })
     }
     if (selected.length >= 3) return;
     const d = avail.find((dd) => dd.key === key)?.date;
+    if (!d) return;
     const tooClose = selected.some((s) => {
       const sd = avail.find((dd) => dd.key === s.key)?.date;
-      return d && sd && Math.abs((d - sd) / 86400000) < 1;
+      return sd && Math.abs((d - sd) / 86400000) < 1;
     });
     if (tooClose) return;
+    // All 3 sessions must fall within a single 7-day span.
+    const otherDates = selected.map((s) => avail.find((dd) => dd.key === s.key)?.date).filter(Boolean);
+    const allDates = [...otherDates, d];
+    const spanDays = (Math.max(...allDates) - Math.min(...allDates)) / 86400000;
+    if (spanDays > 6) return;
     setSelected([...selected, { key, time }].sort((a, b) => (a.key+a.time).localeCompare(b.key+b.time)));
   };
 
@@ -512,7 +518,7 @@ function Sessions({ C, selected, setSelected, avail, setAvail, onBack, onNext })
         <div>
           <h2 style={{ fontSize:24, fontWeight:500, margin:'0 0 6px', letterSpacing:-0.2 }}>세션 3회를 선택해 주세요</h2>
           <p style={{ fontSize:13, color:C.muted, margin:0 }}>
-            달력에서 원하시는 날짜와 시간을 선택해 주세요 · 각 세션은 최소 1일 이상 간격을 두어야 합니다.
+            달력에서 원하시는 날짜와 시간을 선택해 주세요 · 각 세션은 최소 1일 이상 간격을 두어야 하며, 3회 모두 일주일 이내에 완료되어야 합니다.
           </p>
         </div>
         <SelectionPills C={C} selected={selected} avail={avail} onRemove={(s) => toggle(s.key, s.time)} />
