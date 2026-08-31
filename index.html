@@ -70,14 +70,22 @@ const DAY_HOURS = {
   '2026-08-26': [12, 15],
 };
 
+function keyToDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Builds one entry per date that has either preset hours (DAY_HOURS) or a
+// researcher-added custom slot, sorted chronologically — not limited to a
+// fixed window, so newly-added future days/months show up automatically.
 function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), customSlots = []) {
   const taken = new Set([]);
   extraTaken.forEach((t) => taken.add(t));
   openedSlots.forEach((k) => taken.delete(k));
-  const days = [];
-  for (let i = 0; i < 14; i++) {
-    const d    = addDays(TODAY, i);
-    const key  = ymd(d);
+  const keys = new Set(Object.keys(DAY_HOURS));
+  (customSlots || []).forEach((s) => keys.add(s.key));
+  return [...keys].sort().map((key) => {
+    const d    = keyToDate(key);
     const hrs  = DAY_HOURS[key];
     const slots = [];
     if (hrs) {
@@ -96,9 +104,8 @@ function buildAvailability(extraTaken = new Set(), openedSlots = new Set(), cust
         slots.push({ time: s.time, taken: taken.has(`${key}_${s.time}`) });
     });
     slots.sort((a, b) => a.time.localeCompare(b.time));
-    days.push({ date: d, key, slots });
-  }
-  return days;
+    return { date: d, key, slots };
+  });
 }
 
 // ── Sheets API ────────────────────────────────────────────────────────────────
@@ -120,10 +127,6 @@ async function apiPost(data) {
     });
   } catch(e) {}
 }
-
-// Static day lookup — used only for date/title formatting (dates never change)
-const BASE_DAYS = buildAvailability(new Set(), new Set(), []);
-const dayByKey  = (k) => BASE_DAYS.find((d) => d.key === k);
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
 const primaryBtn = (C) => ({
@@ -210,7 +213,7 @@ function Intro({ C, onNext }) {
       </p>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, margin:'0 0 36px' }}>
         <FactCard C={C} swatch={C.a} k="세션 수" v="3회" sub="각 20분" />
-        <FactCard C={C} swatch={C.b} k="기간" v="8/24–8/26" sub="최소 1일 간격" />
+        <FactCard C={C} swatch={C.b} k="기간" v="상시 예약 가능" sub="최소 1일 간격" />
         <FactCard C={C} swatch={C.c} k="장소" v="실험실 대면" sub="세부사항 안내" />
         <FactCard C={C} swatch={C.accent} k="참여 보상" v="50,000원" sub="3회 세션 완료 시" />
       </div>
@@ -418,10 +421,7 @@ function InfoH({ C, children }) {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
-function Sessions({ C, selected, setSelected, onBack, onNext }) {
-  const [avail, setAvail] = React.useState(() => buildAvailability(new Set(), new Set(), []));
-  const lookupDay = dayByKey;
-
+function Sessions({ C, selected, setSelected, avail, setAvail, onBack, onNext }) {
   React.useEffect(() => {
     const refresh = async () => {
       const data = await apiGet();
@@ -455,10 +455,10 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
       return;
     }
     if (selected.length >= 3) return;
-    const d = lookupDay(key).date;
+    const d = avail.find((dd) => dd.key === key)?.date;
     const tooClose = selected.some((s) => {
-      const sd = lookupDay(s.key).date;
-      return Math.abs((d - sd) / 86400000) < 1;
+      const sd = avail.find((dd) => dd.key === s.key)?.date;
+      return d && sd && Math.abs((d - sd) / 86400000) < 1;
     });
     if (tooClose) return;
     setSelected([...selected, { key, time }].sort((a, b) => (a.key+a.time).localeCompare(b.key+b.time)));
@@ -470,13 +470,13 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
         <div>
           <h2 style={{ fontSize:24, fontWeight:500, margin:'0 0 6px', letterSpacing:-0.2 }}>세션 3회를 선택해 주세요</h2>
           <p style={{ fontSize:13, color:C.muted, margin:0 }}>
-            8월 24일 – 8월 26일 · 12:00 – 15:00 · 각 세션은 최소 1일 이상 간격을 두어야 합니다.
+            달력에서 원하시는 날짜와 시간을 선택해 주세요 · 각 세션은 최소 1일 이상 간격을 두어야 합니다.
           </p>
         </div>
-        <SelectionPills C={C} selected={selected} onRemove={(s) => toggle(s.key, s.time)} />
+        <SelectionPills C={C} selected={selected} avail={avail} onRemove={(s) => toggle(s.key, s.time)} />
       </div>
 
-      <MonthDrawer C={C} availability={avail} dayByKey={lookupDay} selected={selected} toggle={toggle} />
+      <MonthDrawer C={C} availability={avail} selected={selected} toggle={toggle} />
 
       <div style={{
         position:'sticky', bottom:-36, marginTop:24,
@@ -504,7 +504,7 @@ function Sessions({ C, selected, setSelected, onBack, onNext }) {
   );
 }
 
-function SelectionPills({ C, selected, onRemove }) {
+function SelectionPills({ C, selected, avail, onRemove }) {
   return (
     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
       {[0,1,2].map((i) => {
@@ -516,7 +516,8 @@ function SelectionPills({ C, selected, onRemove }) {
             minWidth:110, textAlign:'center',
           }}>세션 {i+1}</div>
         );
-        const d = dayByKey(s.key).date;
+        const d = avail.find((dd) => dd.key === s.key)?.date;
+        if (!d) return null;
         return (
           <button key={i} onClick={() => onRemove(s)} style={{
             padding:'8px 12px', borderRadius:999,
@@ -534,12 +535,16 @@ function SelectionPills({ C, selected, onRemove }) {
 }
 
 // ── Month + slot drawer ───────────────────────────────────────────────────────
-function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay }) {
-  const [focus, setFocus] = React.useState((availability || BASE_DAYS)[0].key);
-  const day = (availability || BASE_DAYS).find(d => d.key === focus) || lookupDay(focus);
-  const monthStart = startOfMonth(TODAY);
-  const firstDow   = monthStart.getDay();
-  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+function MonthDrawer({ C, selected, toggle, availability }) {
+  const [viewMonth, setViewMonth] = React.useState(() =>
+    startOfMonth((availability[0] || { date: TODAY }).date)
+  );
+  const [focus, setFocus] = React.useState(() => (availability[0] || {}).key);
+  const day = availability.find((d) => d.key === focus);
+  const firstDow    = viewMonth.getDay();
+  const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth()+1, 0).getDate();
+
+  const goMonth = (delta) => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth()+delta, 1));
 
   return (
     <div style={{
@@ -550,10 +555,10 @@ function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay })
       {/* Month grid */}
       <div style={{ padding:'24px 24px 24px 28px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-          <div style={{ fontSize:15, fontWeight:500 }}>{TODAY.getFullYear()}년 {TODAY.getMonth()+1}월</div>
+          <div style={{ fontSize:15, fontWeight:500 }}>{viewMonth.getFullYear()}년 {viewMonth.getMonth()+1}월</div>
           <div style={{ display:'flex', gap:6 }}>
-            <NavBtn C={C}>‹</NavBtn>
-            <NavBtn C={C}>›</NavBtn>
+            <NavBtn C={C} onClick={() => goMonth(-1)}>‹</NavBtn>
+            <NavBtn C={C} onClick={() => goMonth(1)}>›</NavBtn>
           </div>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4, fontSize:11, color:C.muted, marginBottom:6 }}>
@@ -562,9 +567,9 @@ function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay })
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4 }}>
           {Array.from({ length: firstDow }).map((_,i) => <div key={'pad'+i} />)}
           {Array.from({ length: daysInMonth }).map((_,i) => {
-            const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), i+1);
+            const date = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), i+1);
             const key  = ymd(date);
-            const av   = (availability || BASE_DAYS).find(d => d.key === key);
+            const av   = availability.find((d) => d.key === key);
             const free = av && av.slots.some((s) => !s.taken);
             const isFocus = key === focus;
             const selCount = selected.filter((s) => s.key === key).length;
@@ -605,20 +610,26 @@ function MonthDrawer({ C, selected, toggle, availability, dayByKey: lookupDay })
 
       {/* Slot drawer */}
       <div style={{ padding:'24px 28px 24px 24px', borderLeft:`1px solid ${C.line}` }}>
-        <div style={{ fontSize:13, color:C.muted, marginBottom:4 }}>{KO_DAYS[day.date.getDay()]}요일</div>
-        <div style={{ fontSize:18, fontWeight:500, marginBottom:18, letterSpacing:-0.2 }}>
-          {day.date.getMonth()+1}월 {day.date.getDate()}일
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, maxHeight:320, overflowY:'auto', paddingRight:4 }}>
-          {day.slots.map((s) => {
-            const isSel = !!selected.find((x) => x.key === day.key && x.time === s.time);
-            return (
-              <SlotBtn key={s.time} C={C} time={s.time} taken={s.taken} selected={isSel}
-                       onClick={() => !s.taken && toggle(day.key, s.time)} />
-            );
-          })}
-          {day.slots.length === 0 && <div style={{ color:C.muted, fontSize:13 }}>이 날에는 가능한 시간대가 없습니다.</div>}
-        </div>
+        {day ? (
+          <>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:4 }}>{KO_DAYS[day.date.getDay()]}요일</div>
+            <div style={{ fontSize:18, fontWeight:500, marginBottom:18, letterSpacing:-0.2 }}>
+              {day.date.getMonth()+1}월 {day.date.getDate()}일
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, maxHeight:320, overflowY:'auto', paddingRight:4 }}>
+              {day.slots.map((s) => {
+                const isSel = !!selected.find((x) => x.key === day.key && x.time === s.time);
+                return (
+                  <SlotBtn key={s.time} C={C} time={s.time} taken={s.taken} selected={isSel}
+                           onClick={() => !s.taken && toggle(day.key, s.time)} />
+                );
+              })}
+              {day.slots.length === 0 && <div style={{ color:C.muted, fontSize:13 }}>이 날에는 가능한 시간대가 없습니다.</div>}
+            </div>
+          </>
+        ) : (
+          <div style={{ color:C.muted, fontSize:13 }}>이번 달에는 가능한 날짜가 없습니다. 달력의 ‹ › 로 다른 달을 확인해 주세요.</div>
+        )}
       </div>
     </div>
   );
@@ -640,9 +651,9 @@ function SlotBtn({ C, time, taken, selected, onClick }) {
   );
 }
 
-function NavBtn({ C, children }) {
+function NavBtn({ C, children, onClick }) {
   return (
-    <button style={{
+    <button onClick={onClick} style={{
       width:26, height:26, borderRadius:6,
       background:'transparent', border:`1px solid ${C.line}`,
       color:C.ink, cursor:'pointer', fontFamily:'inherit', fontSize:13,
@@ -664,7 +675,7 @@ function Legend({ swatch, label, outline }) {
 }
 
 // ── Details ───────────────────────────────────────────────────────────────────
-function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
+function Details({ C, form, setForm, selected, avail, onBack, onNext, onWithdraw }) {
   const valid = form.name.trim() && form.dob && form.phone.trim() && form.account.trim() &&
                 form.smsConsent === 'yes' && form.consent === 'yes';
   const upd   = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -743,7 +754,8 @@ function Details({ C, form, setForm, selected, onBack, onNext, onWithdraw }) {
         <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>각 20분 · 실험실 대면</div>
         <ol style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
           {selected.map((s, i) => {
-            const d = dayByKey(s.key).date;
+            const d = avail.find((dd) => dd.key === s.key)?.date;
+            if (!d) return null;
             return (
               <li key={i} style={{ display:'flex', gap:12, alignItems:'center' }}>
                 <span style={{
@@ -784,7 +796,7 @@ function Field({ C, label, ...rest }) {
 }
 
 // ── Confirm ───────────────────────────────────────────────────────────────────
-function Confirm({ C, form, selected, onReset }) {
+function Confirm({ C, form, selected, avail, onReset }) {
   return (
     <div style={{ maxWidth:640, margin:'0 auto', textAlign:'center', paddingTop:20 }}>
       <div style={{
@@ -810,7 +822,8 @@ function Confirm({ C, form, selected, onReset }) {
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           {selected.map((s, i) => {
-            const d = dayByKey(s.key).date;
+            const d = avail.find((dd) => dd.key === s.key)?.date;
+            if (!d) return null;
             return (
               <div key={i} style={{
                 display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -882,6 +895,7 @@ function BookingApp() {
   const [selected, setSelected] = React.useState([]);
   const [form, setForm]         = React.useState({ name:'', dob:'', phone:'', account:'', smsConsent:null, consent:null });
   const [readInfo, setReadInfo] = React.useState(false);
+  const [avail, setAvail]       = React.useState(() => buildAvailability(new Set(), new Set(), []));
 
   const reset = () => {
     setStep('intro'); setSelected([]);
@@ -915,11 +929,11 @@ function BookingApp() {
         {step==='intro'    && <Intro C={C} onNext={() => setStep('info')} />}
         {step==='info'     && <StudyInfo C={C} readInfo={readInfo} setReadInfo={setReadInfo}
                                 onBack={() => setStep('intro')} onNext={() => setStep('sessions')} />}
-        {step==='sessions' && <Sessions C={C} selected={selected} setSelected={setSelected}
+        {step==='sessions' && <Sessions C={C} selected={selected} setSelected={setSelected} avail={avail} setAvail={setAvail}
                                 onBack={() => setStep('info')} onNext={() => setStep('details')} />}
-        {step==='details'  && <Details C={C} form={form} setForm={setForm} selected={selected}
+        {step==='details'  && <Details C={C} form={form} setForm={setForm} selected={selected} avail={avail}
                                 onBack={() => setStep('sessions')} onNext={submit} onWithdraw={() => setStep('withdrawn')} />}
-        {step==='confirm'   && <Confirm C={C} form={form} selected={selected} onReset={reset} />}
+        {step==='confirm'   && <Confirm C={C} form={form} selected={selected} avail={avail} onReset={reset} />}
         {step==='withdrawn' && <Withdrawn C={C} onBack={() => setStep('details')} />}
       </div>
     </div>
