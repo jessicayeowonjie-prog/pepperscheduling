@@ -402,6 +402,10 @@ function Sessions({ selected, setSelected, onNext }) {
     const d  = new Date(key);
     const tooClose = selected.some(s => Math.abs((d - new Date(s.key)) / 86400000) < 1);
     if (tooClose) return;
+    // All 3 sessions must fall within a single 7-day span.
+    const allDates = [...selected.map(s => new Date(s.key)), d];
+    const spanDays = (Math.max(...allDates) - Math.min(...allDates)) / 86400000;
+    if (spanDays > 6) return;
     setSelected([...selected, { key, time }].sort((a, b) => (a.key+a.time).localeCompare(b.key+b.time)));
   };
 
@@ -411,7 +415,7 @@ function Sessions({ selected, setSelected, onNext }) {
       <div style={{ padding:'14px 20px 10px', flexShrink:0 }}>
         <div style={{ fontSize:13, fontWeight:500, marginBottom:4 }}>세션 3회를 선택해 주세요</div>
         <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>
-          날짜와 시간을 선택해 주세요 · 각 세션은 최소 1일 간격
+          날짜와 시간을 선택해 주세요 · 최소 1일 간격, 일주일 이내 3회
         </div>
         <div style={{ display:'flex', gap:6 }}>
           {[0,1,2].map(i => {
@@ -474,26 +478,35 @@ function Sessions({ selected, setSelected, onNext }) {
           {focusDate.getMonth()+1}월 {focusDate.getDate()}일 ({KO_DAYS[focusDate.getDay()]}) · 가능한 시간
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-          {focusSlots.map(s => {
-            const isSel   = !!selected.find(x => x.key === focus && x.time === s.time);
-            const tooClose = !s.taken && !isSel && selected.some(x => Math.abs((new Date(focus) - new Date(x.key)) / 86400000) < 1);
-            return (
-              <button key={s.time} onClick={() => !s.taken && toggle(focus, s.time)}
-                disabled={s.taken || tooClose} style={{
-                  padding:'12px 6px', borderRadius:10, fontFamily:'inherit', fontSize:13,
-                  fontVariantNumeric:'tabular-nums', textAlign:'center',
-                  border:`1px solid ${isSel ? 'transparent' : s.taken ? C.line : tooClose ? C.line : C.line}`,
-                  background: isSel ? C.ink : s.taken ? C.bg : tooClose ? C.bg : C.surface,
-                  color: isSel ? C.surface : s.taken ? C.muted : tooClose ? C.muted : C.ink,
-                  cursor: s.taken || tooClose ? 'not-allowed' : 'pointer',
-                  opacity: s.taken ? 0.4 : tooClose ? 0.35 : 1,
-                }}>
-                <div style={{ fontWeight: isSel ? 500 : 400 }}>{s.time}</div>
-                {isSel && <div style={{ fontSize:9, marginTop:3, opacity:0.7 }}>선택됨</div>}
-                {s.taken && <div style={{ fontSize:9, marginTop:3 }}>마감</div>}
-              </button>
-            );
-          })}
+          {(() => {
+            const focusDateObj = new Date(focus);
+            const sameDayBlocked = selected.some(x => Math.abs((focusDateObj - new Date(x.key)) / 86400000) < 1);
+            const weekSpanBlocked = !sameDayBlocked && selected.length > 0 && (() => {
+              const allDates = [...selected.map(x => new Date(x.key)), focusDateObj];
+              return (Math.max(...allDates) - Math.min(...allDates)) / 86400000 > 6;
+            })();
+            const dayBlocked = sameDayBlocked || weekSpanBlocked;
+            return focusSlots.map(s => {
+              const isSel   = !!selected.find(x => x.key === focus && x.time === s.time);
+              const tooClose = !s.taken && !isSel && dayBlocked;
+              return (
+                <button key={s.time} onClick={() => !s.taken && toggle(focus, s.time)}
+                  disabled={s.taken || tooClose} style={{
+                    padding:'12px 6px', borderRadius:10, fontFamily:'inherit', fontSize:13,
+                    fontVariantNumeric:'tabular-nums', textAlign:'center',
+                    border:`1px solid ${isSel ? 'transparent' : s.taken ? C.line : tooClose ? C.line : C.line}`,
+                    background: isSel ? C.ink : s.taken ? C.bg : tooClose ? C.bg : C.surface,
+                    color: isSel ? C.surface : s.taken ? C.muted : tooClose ? C.muted : C.ink,
+                    cursor: s.taken || tooClose ? 'not-allowed' : 'pointer',
+                    opacity: s.taken ? 0.4 : tooClose ? 0.35 : 1,
+                  }}>
+                  <div style={{ fontWeight: isSel ? 500 : 400 }}>{s.time}</div>
+                  {isSel && <div style={{ fontSize:9, marginTop:3, opacity:0.7 }}>선택됨</div>}
+                  {s.taken && <div style={{ fontSize:9, marginTop:3 }}>마감</div>}
+                </button>
+              );
+            });
+          })()}
           {focusSlots.length === 0 && (
             <div style={{ gridColumn:'1/-1', color:C.muted, fontSize:13, padding:'20px 0', textAlign:'center' }}>
               {isTodayFocus ? '오늘 신청 가능한 시간대는 없습니다.' : '이 날에는 가능한 시간대가 없습니다.'}
