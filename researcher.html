@@ -442,7 +442,7 @@ function TabNav({ C, view, setView }) {
 }
 
 // ── DayCard (calendar view helper) ───────────────────────────────────────────
-function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
+function DayCard({ C, day, slotMap, closedSlots, toggleSlot, customSlots, addCustomSlot, removeCustomSlot }) {
   const dow = KO_DAYS[day.date.getDay()];
   const [adding,  setAdding]  = React.useState(false);
   const [newTime, setNewTime] = React.useState('');
@@ -478,18 +478,13 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
           const bookings     = slotMap[k] || [];
           const hasBooking   = bookings.length > 0;
           const allConfirmed = hasBooking && bookings.every((r) => r.status === 'confirmed');
-          const isOpened     = openedSlots.includes(k);
           const isClosed     = closedSlots.includes(k);
-          const isPreset     = slot.taken && !isOpened && !hasBooking;
           const isCustom     = slot.isCustom;
 
           let bg, color, borderColor, cursor, title;
           if (hasBooking) {
             bg = allConfirmed ? C.b : C.a; color = C.ink; borderColor = 'transparent';
             cursor = 'default'; title = bookings.map((r) => r.name).join(', ');
-          } else if (isPreset) {
-            bg = '#ddd7d3'; color = C.muted; borderColor = 'transparent';
-            cursor = 'pointer'; title = '클릭하여 개방';
           } else if (isClosed) {
             bg = C.ink; color = C.surface; borderColor = 'transparent';
             cursor = 'pointer'; title = '클릭하여 차단 해제';
@@ -501,7 +496,6 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
 
           const handleClick = () => {
             if (hasBooking) return;
-            if (isPreset || isOpened) return toggleOpenSlot(k);
             toggleSlot(k);
           };
 
@@ -520,7 +514,6 @@ function DayCard({ C, day, slotMap, closedSlots, toggleSlot, openedSlots, toggle
                   </span>
                 )}
                 {isClosed  && <span style={{ opacity:0.6, flexShrink:0 }}>✕</span>}
-                {isOpened  && <span style={{ opacity:0.6, flexShrink:0, fontSize:9 }}>↩</span>}
               </button>
               {isCustom && !hasBooking && (
                 <button onClick={() => removeCustomSlot(day.key, slot.time)} title="슬롯 삭제" style={{
@@ -608,7 +601,7 @@ function AddSlotDayForm({ C, addCustomSlot }) {
 }
 
 // ── CalendarView ──────────────────────────────────────────────────────────────
-function CalendarView({ C, reqs, availability, closedSlots, toggleSlot, openedSlots, toggleOpenSlot, customSlots, addCustomSlot, removeCustomSlot }) {
+function CalendarView({ C, reqs, availability, closedSlots, toggleSlot, customSlots, addCustomSlot, removeCustomSlot }) {
   const slotMap = React.useMemo(() => {
     const map = {};
     reqs.forEach((r) => {
@@ -636,8 +629,7 @@ function CalendarView({ C, reqs, availability, closedSlots, toggleSlot, openedSl
     [C.bg, C.line, '가능 (클릭 → 차단)'],
     [C.a, 'transparent', '신청(대기)'],
     [C.b, 'transparent', '신청(확정)'],
-    ['#ddd7d3', 'transparent', '기본 차단 (클릭 → 개방)'],
-    [C.ink, 'transparent', '직접 차단 (클릭 → 해제)'],
+    [C.ink, 'transparent', '차단됨 (클릭 → 해제)'],
   ];
 
   return (
@@ -668,7 +660,6 @@ function CalendarView({ C, reqs, availability, closedSlots, toggleSlot, openedSl
                 <div key={day.key} style={{ width:132, flexShrink:0 }}>
                   <DayCard C={C} day={day} slotMap={slotMap}
                            closedSlots={closedSlots} toggleSlot={toggleSlot}
-                           openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
                            customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
                 </div>
               ))}
@@ -781,11 +772,6 @@ function ResearcherInbox() {
     setClosedSlotsRaw(next);
     apiPost({ action: 'setConfig', config: { closedSlots: next, openedSlots, customSlots } });
   };
-  const toggleOpenSlot = (k) => {
-    const next = openedSlots.includes(k) ? openedSlots.filter(s => s !== k) : [...openedSlots, k];
-    setOpenedSlotsRaw(next);
-    apiPost({ action: 'setConfig', config: { closedSlots, openedSlots: next, customSlots } });
-  };
   const addCustomSlot = (slot) => {
     if (customSlots.find(s => s.key === slot.key && s.time === slot.time)) return;
     const next = [...customSlots, slot];
@@ -838,7 +824,6 @@ function ResearcherInbox() {
 
       {view === 'calendar' ? (
         <CalendarView C={C} reqs={reqs} availability={availability} closedSlots={closedSlots} toggleSlot={toggleSlot}
-                      openedSlots={openedSlots} toggleOpenSlot={toggleOpenSlot}
                       customSlots={customSlots} addCustomSlot={addCustomSlot} removeCustomSlot={removeCustomSlot} />
       ) : !current ? (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
