@@ -23,3 +23,53 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 - `README.md` — this file
 - `chats/` — conversation transcripts (read these!)
 - `project/` — the `Scheduling Site` project files (HTML prototypes, assets, components)
+
+## Security note: researcher inbox access
+
+`researcher.html` is gated behind a password (see `RESEARCHER_KEY` near the
+top of its `<script>`, in the "Sheets API" section) so the inbox UI — and the
+participant PII it fetches (name, DOB, phone, bank account) — isn't rendered
+or requested until the password is entered. Unlock state lives in
+`sessionStorage`, so it clears when the browser tab/window closes.
+
+**This alone does not secure the data.** `researcher.html`, `index.html`, and
+`mobile.html` all embed the same Google Apps Script URL (`SCRIPT_URL`) in
+plain page source, and `index.html`/`mobile.html` are the participant-facing
+pages everyone gets — so that endpoint is already effectively public. A
+client-side password can't stop someone from POSTing directly to
+`SCRIPT_URL` with `curl`, bypassing `researcher.html` entirely. Client-side
+checks are a UI convenience, not an access-control boundary — see OWASP's
+guidance on server-side enforcement of access control
+([OWASP Top 10 2021 – A01 Broken Access Control](https://owasp.org/Top10/A01_2021-Broken_Access_Control/),
+which explicitly calls out relying on client-side controls as a common
+failure mode).
+
+The real gate has to live in the Apps Script backend (`doPost`, in the
+separate Google Apps Script project — not part of this repo): reject the
+researcher-only actions (`update`, `delete`, `restore`, `setConfig`) unless
+the request body's `researcherKey` matches the same value as
+`RESEARCHER_KEY` in `researcher.html`. The participant-only action
+(`submit`, used by `index.html`/`mobile.html`) must stay unauthenticated so
+booking still works. Example check to add at the top of `doPost`:
+
+```js
+function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  const RESEARCHER_KEY = 'lab409'; // keep in sync with researcher.html
+
+  const RESEARCHER_ONLY_ACTIONS = ['update', 'delete', 'restore', 'setConfig'];
+  if (RESEARCHER_ONLY_ACTIONS.includes(data.action) && data.researcherKey !== RESEARCHER_KEY) {
+    return ContentService.createTextOutput(JSON.stringify({ error: 'unauthorized' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ...existing doPost logic, unchanged...
+}
+```
+
+Until that check is added to the Apps Script and redeployed, this password
+only hides the UI — it does not stop a direct request to the endpoint.
+Because `RESEARCHER_KEY` is committed to source, treat it as not-secret: if
+this repository is or becomes public, anyone can read it from the file (and
+from git history, even after it's changed) — rotate it in both files if that
+happens.

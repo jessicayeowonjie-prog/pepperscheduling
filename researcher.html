@@ -404,6 +404,16 @@ function SessionsBlock({ C, current, patchCurrent, availability, dayByKey }) {
 // ── Sheets API ────────────────────────────────────────────────────────────────
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxXdMr1XaCuQx-1__vtkTg3cExBkBApYNCXkFP_mExkqOeE-TCS-odbqrTuWB_-vaea/exec';
 
+// Shared secret sent with every researcher-only write (update/delete/restore/
+// setConfig). This is visible to anyone who views this page's source — that's
+// unavoidable for a static page with no login server. Its purpose is to let
+// the Apps Script backend (doPost) reject write requests that don't carry it,
+// so pointing a raw HTTP request at SCRIPT_URL (e.g. copied out of
+// index.html/mobile.html, which are public-facing) can't silently change a
+// participant's schedule. It does NOT make this constant itself secret — see
+// README for the server-side check that has to accompany this.
+const RESEARCHER_KEY = 'lab409';
+
 async function apiGet() {
   try {
     const ctrl = new AbortController();
@@ -419,9 +429,66 @@ async function apiPost(data) {
     await fetch(SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, researcherKey: RESEARCHER_KEY }),
     });
   } catch(e) {}
+}
+
+// ── PasswordGate — blocks rendering (and therefore all data fetching) until
+// the correct password is entered. Unlock state is kept in sessionStorage, so
+// it clears when the tab/window closes and must be re-entered on next visit. ─
+const UNLOCK_STORAGE_KEY = 'pepperStudyResearcherUnlocked';
+
+function PasswordGate({ C, onUnlock }) {
+  const [pw, setPw]       = React.useState('');
+  const [error, setError] = React.useState('');
+  const inputRef = React.useRef(null);
+  React.useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (pw === RESEARCHER_KEY) {
+      try { sessionStorage.setItem(UNLOCK_STORAGE_KEY, '1'); } catch (e) {}
+      onUnlock();
+    } else {
+      setError('비밀번호가 올바르지 않습니다.');
+      setPw('');
+    }
+  };
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%' }}>
+      <form onSubmit={submit} style={{
+        width:340, background:C.surface, border:`1px solid ${C.line}`, borderRadius:14,
+        padding:'32px 28px', boxShadow:'0 24px 60px -30px rgba(0,0,0,0.18)',
+        display:'flex', flexDirection:'column', gap:14, fontFamily:'"Inter","Noto Sans KR",system-ui,sans-serif',
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:18, height:18, borderRadius:4, background:`linear-gradient(135deg, ${C.a}, ${C.b})`, border:`1px solid ${C.line}` }} />
+          <span style={{ fontSize:13, fontWeight:500, color:C.ink }}>Pepper Study · 연구자 받은편지함</span>
+        </div>
+        <div style={{ fontSize:13, color:C.muted, lineHeight:1.6 }}>
+          이 페이지는 참여자의 개인정보와 일정을 관리합니다. 계속하려면 비밀번호를 입력하세요.
+        </div>
+        <input
+          ref={inputRef} type="password" value={pw} autoComplete="current-password"
+          onChange={(e) => { setPw(e.target.value); setError(''); }}
+          placeholder="비밀번호"
+          style={{
+            padding:'11px 14px', borderRadius:10, border:`1px solid ${error ? C.accent : C.line}`,
+            fontFamily:'inherit', fontSize:14, background:C.bg, color:C.ink, outline:'none',
+          }}
+        />
+        {error && <div style={{ fontSize:12, color:C.accent }}>{error}</div>}
+        <button type="submit" disabled={!pw} style={{
+          padding:'11px 16px', borderRadius:999, border:'none',
+          background: pw ? C.ink : C.line, color: pw ? C.surface : C.muted,
+          fontFamily:'inherit', fontSize:13, fontWeight:500,
+          cursor: pw ? 'pointer' : 'not-allowed',
+        }}>입장</button>
+      </form>
+    </div>
+  );
 }
 
 // ── TabNav ────────────────────────────────────────────────────────────────────
@@ -988,7 +1055,10 @@ function Header({ C, reqs }) {
 // ── Scaled viewport wrapper ───────────────────────────────────────────────────
 function App() {
   const W = 1200, H = 820;
-  const [scale, setScale] = React.useState(1);
+  const [scale, setScale]       = React.useState(1);
+  const [unlocked, setUnlocked] = React.useState(() => {
+    try { return sessionStorage.getItem(UNLOCK_STORAGE_KEY) === '1'; } catch (e) { return false; }
+  });
 
   React.useLayoutEffect(() => {
     const compute = () => {
@@ -1000,6 +1070,10 @@ function App() {
     window.addEventListener('resize', compute);
     return () => window.removeEventListener('resize', compute);
   }, []);
+
+  if (!unlocked) {
+    return <PasswordGate C={PALETTES.blush} onUnlock={() => setUnlocked(true)} />;
+  }
 
   return (
     <div style={{ position:'relative', width:Math.round(W*scale), height:Math.round(H*scale), flexShrink:0 }}>
