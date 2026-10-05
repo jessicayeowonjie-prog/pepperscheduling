@@ -1014,7 +1014,53 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// ── Password gate ────────────────────────────────────────────────────────────
+// Nothing (including data loading) happens until the password is entered.
+// Unlock lasts only for the current browser tab session.
+const GATE_PASSWORD = '0629';
+const GATE_KEY = 'pepper-researcher-unlocked';
+
+function PasswordGate() {
+  const [unlocked, setUnlocked] = React.useState(() => {
+    try { return sessionStorage.getItem(GATE_KEY) === '1'; } catch { return false; }
+  });
+  const [value, setValue] = React.useState('');
+  const [error, setError] = React.useState(false);
+
+  if (unlocked) return <App />;
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (value === GATE_PASSWORD) {
+      try { sessionStorage.setItem(GATE_KEY, '1'); } catch {}
+      setUnlocked(true);
+    } else {
+      setError(true);
+      setValue('');
+    }
+  };
+
+  return (
+    <form onSubmit={submit} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+      <input
+        type="password"
+        inputMode="numeric"
+        autoFocus
+        placeholder="password"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setError(false); }}
+        style={{
+          width:200, padding:'10px 14px', fontSize:15, textAlign:'center',
+          border:`1px solid ${error ? '#a4625a' : '#ede2db'}`, borderRadius:10,
+          background:'#fffdfb', color:'#2b2422', outline:'none', fontFamily:'inherit',
+        }}
+      />
+      {error && <div style={{ fontSize:13, color:'#a4625a' }}>Incorrect password</div>}
+    </form>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<PasswordGate />);
 </script>
 </body>
 </html>
