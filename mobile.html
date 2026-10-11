@@ -2,6 +2,10 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
+<script>
+  // Registration is closed. Set to false to reopen the booking form.
+  window.REGISTRATION_CLOSED = true;
+</script>
 <title>Pepper Study · 일정 예약</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -22,9 +26,31 @@
   /* Hide scrollbars globally but keep scrolling */
   * { -ms-overflow-style: none; scrollbar-width: none; }
   *::-webkit-scrollbar { display: none; }
+  .closed-notice {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.6;
+    color: #2b2422;
+  }
+  .closed-notice[hidden] { display: none; }
+  .reg-closed #root { display: none; }
 </style>
 </head>
 <body>
+<div id="closed-notice" class="closed-notice" hidden>신청이 마감되었습니다. 감사합니다.</div>
+<script>
+  if (window.REGISTRATION_CLOSED) {
+    document.documentElement.classList.add('reg-closed');
+    document.getElementById('closed-notice').hidden = false;
+  }
+</script>
 <div id="root"></div>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -793,7 +819,9 @@ function BookingApp() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<BookingApp />);
+if (!window.REGISTRATION_CLOSED) {
+  ReactDOM.createRoot(document.getElementById('root')).render(<BookingApp />);
+}
 </script>
 </body>
 </html>
